@@ -1,14 +1,16 @@
 {
   "name": "webrtc-minimal-calls",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Простой видеозвонок: WebRTC + WebSocket signaling + 2 страницы",
+  "description": "Простой видеозвонок: WebRTC + WebSocket signaling + авторизация на создание встреч, гостям достаточно ссылки",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "4.19.2",
-    "ws": "8.18.0"
+    "ws": "8.18.0",
+    "express-session": "1.17.3",
+    "jsonwebtoken": "9.0.2"
   }
 }

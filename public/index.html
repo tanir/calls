@@ -7,67 +7,32 @@
   <style>
     :root { color-scheme: light dark; }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: Canvas;
-      color: CanvasText;
-      min-height: 100svh;
-      display: grid;
-      place-items: center;
+    body { margin: 0; min-height: 100svh; display: grid; place-items: center; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     }
-    .card {
-      width: 100%;
-      max-width: 560px;
-      border: 1px solid color-mix(in oklab, CanvasText 20%, transparent);
-      border-radius: 20px;
-      padding: 20px;
-      box-shadow: 0 12px 40px #00000010;
-      background: color-mix(in oklab, Canvas 95%, CanvasText 5%);
-    }
-    h1 { margin: 0 0 8px; font-size: clamp(1.25rem, 2.5vw + .5rem, 1.8rem); }
+    .card { width: 100%; max-width: 560px; border: 1px solid #9994; border-radius: 20px; padding: 20px; box-shadow: 0 12px 40px #0001; }
+    h1 { margin: 0 0 8px; font-size: clamp(1.2rem, 2.5vw + .5rem, 1.8rem); }
     p { margin: 0 0 16px; line-height: 1.4; }
     .actions { display: grid; gap: 12px; }
-    button {
-      font: inherit;
-      padding: 14px 16px;
-      border-radius: 14px;
-      border: 1px solid color-mix(in oklab, CanvasText 25%, transparent);
-      background: color-mix(in oklab, Canvas 92%, CanvasText 8%);
-      color: CanvasText;
-      cursor: pointer;
-      touch-action: manipulation;
-      min-height: 48px;
-    }
-    button:active { transform: translateY(1px); }
+    button { font: inherit; padding: 14px 16px; border-radius: 14px; border: 1px solid #9996; background: color-mix(in oklab, Canvas 92%, CanvasText 8%); cursor: pointer; min-height: 48px; }
     .linkbox { display: none; margin-top: 16px; }
-    .row { display: grid; gap: 8px; }
-    input[type="text"] {
-      width: 100%; padding: 12px 14px; border-radius: 12px;
-      border: 1px solid color-mix(in oklab, CanvasText 25%, transparent);
-      background: color-mix(in oklab, Canvas 96%, CanvasText 4%);
-      color: CanvasText; font: inherit;
-    }
+    input[type="text"] { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid #9996; background: color-mix(in oklab, Canvas 96%, CanvasText 4%); }
     .muted { opacity: .75; font-size: .95rem; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>Видеозвонок за 1 клик</h1>
-    <p>Нажмите «Создать встречу», получите ссылку и отправьте её собеседнику. Он откроет ссылку — и вы сразу увидите друг друга.</p>
-
+    <p>Нажмите «Создать встречу» — получите <b>подписанную ссылку</b> и отправьте её собеседнику. Ему логин не нужен.</p>
     <div class="actions">
       <button id="createBtn" aria-label="Создать встречу">Создать встречу</button>
+      <form method="post" action="/logout"><button type="submit">Выйти из админ-режима</button></form>
     </div>
 
     <div class="linkbox" id="linkBox">
-      <div class="row">
-        <label for="roomLink" class="muted">Ссылка на комнату:</label>
-        <input id="roomLink" type="text" readonly />
-        <button id="copyBtn" aria-label="Скопировать ссылку">Скопировать ссылку</button>
-        <p class="muted">Скопируйте и отправьте эту ссылку второму участнику. Мы автоматически перенаправим вас в комнату.</p>
-      </div>
+      <p>Ссылка на комнату (действительна ограниченное время):</p>
+      <input id="roomLink" type="text" readonly />
+      <p class="muted">Скопируйте и отправьте эту ссылку второму участнику. Мы автоматически перенаправим вас в комнату.</p>
     </div>
   </div>
 
@@ -75,28 +40,18 @@
     const btn = document.getElementById('createBtn');
     const box = document.getElementById('linkBox');
     const input = document.getElementById('roomLink');
-    const copyBtn = document.getElementById('copyBtn');
 
-    function randomId(len = 10) {
-      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-      let out = '';
-      for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
-      return out;
-    }
-
-    btn.addEventListener('click', () => {
-      const id = randomId(8);
-      const url = new URL(location.href);
-      url.pathname = '/room.html';
-      url.search = `?room=${id}`;
-      input.value = url.toString();
-      box.style.display = 'block';
-      setTimeout(() => { location.href = url.toString(); }, 700);
-    });
-
-    copyBtn?.addEventListener('click', async () => {
-      if (!input.value) return;
-      try { await navigator.clipboard.writeText(input.value); copyBtn.textContent = 'Скопировано'; setTimeout(()=>copyBtn.textContent='Скопировать ссылку',1500); } catch {}
+    btn.addEventListener('click', async () => {
+      try {
+        const r = await fetch('/api/create-room', { method: 'POST' });
+        if (r.status === 401) { location.href = '/login.html'; return; }
+        const data = await r.json();
+        input.value = data.link;
+        box.style.display = 'block';
+        setTimeout(() => { location.href = data.link; }, 700);
+      } catch (e) {
+        alert('Не удалось создать встречу: ' + e.message);
+      }
     });
   </script>
 </body>
