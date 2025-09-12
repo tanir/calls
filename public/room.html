@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Комната видеозвонка</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0b0c; color: #fff; }
+    header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #111317; border-bottom: 1px solid #ffffff14; }
+    .roomid { font-size: 0.95rem; opacity: .8; }
+    .actions { display: flex; gap: 8px; }
+    button { background: #1f232a; color: #fff; border: 1px solid #ffffff22; padding: 10px 12px; border-radius: 12px; cursor: pointer; }
+    .grid { display: grid; grid-template-columns: 1fr 240px; gap: 10px; height: calc(100vh - 64px); padding: 10px; }
+    .video-wrap { position: relative; background: #0e1014; border: 1px solid #ffffff14; border-radius: 16px; display: grid; place-items: center; }
+    video { width: 100%; height: 100%; object-fit: cover; border-radius: 16px; }
+    .local { position: absolute; right: 12px; bottom: 12px; width: 240px; height: 135px; border: 1px solid #ffffff2a; border-radius: 12px; overflow: hidden; }
+    .sidebar { display: grid; grid-auto-rows: min-content; gap: 10px; }
+    .card { padding: 12px; background: #111317; border: 1px solid #ffffff14; border-radius: 14px; }
+    .status { font-size: .95rem; opacity: .9; }
+    .danger { background: #b3261e; border-color: #b3261e; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="roomid">Комната: <span id="roomLabel"></span></div>
+    <div class="actions">
+      <button id="copyLink">Скопировать ссылку</button>
+      <button id="toggleCam">Камера вкл/выкл</button>
+      <button id="toggleMic">Микрофон вкл/выкл</button>
+      <button id="hangup" class="danger">Завершить</button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="video-wrap">
+      <video id="remoteVideo" autoplay playsinline></video>
+      <video id="localVideo" class="local" autoplay muted playsinline></video>
+    </section>
+    <aside class="sidebar">
+      <div class="card">
+        <div class="status" id="status">Ожидание второго участника…</div>
+      </div>
+      <div class="card">
+        <div style="font-size:.95rem;">Поделитесь ссылкой с собеседником. Как только он зайдёт — вы моментально увидите друг друга.</div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const roomId = qs.get('room');
+    const roomLabel = document.getElementById('roomLabel');
+    const statusEl = document.getElementById('status');
+    const copyBtn = document.getElementById('copyLink');
+    const camBtn = document.getElementById('toggleCam');
+    const micBtn = document.getElementById('toggleMic');
+    const hangupBtn = document.getElementById('hangup');
+
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+
+    roomLabel.textContent = roomId || '—';
+
+    if (!roomId) {
+      alert('room параметр обязателен. Вернитесь и создайте встречу.');
+      location.href = '/';
+    }
+
+    let ws;
+    let pc;
+    let localStream;
+    let role = 'guest';
+    let isCamOn = true;
+    let isMicOn = true;
+
+    const iceServers = [{ urls: ['stun:stun.l.google.com:19302'] }];
+
+    async function initMedia() {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localVideo.srcObject = localStream;
+    }
+
+    function createPeer() {
+      pc = new RTCPeerConnection({ iceServers });
+
+      // Пересылаем локальные треки
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+      // Получаем удалённые треки
+      pc.ontrack = (ev) => {
+        const [stream] = ev.streams;
+        remoteVideo.srcObject = stream;
+      };
+
+      // ICE-кандидаты -> signaling
+      pc.onicecandidate = (ev) => {
+        if (ev.candidate) {
+          send('candidate', { candidate: ev.candidate });
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        const s = pc.connectionState;
+        if (s === 'connected') setStatus('Соединение установлено');
+        if (s === 'disconnected' || s === 'failed') setStatus('Связь потеряна. Переподключитесь или обновите страницу.');
+      };
+    }
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function send(type, data) {
+      ws?.send(JSON.stringify({ type, data, roomId }));
+    }
+
+    async function start() {
+      await initMedia();
+      createPeer();
+
+      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
+      ws.onopen = () => {
+        send('join', { roomId });
+        setStatus('Подключаемся к комнате…');
+      };
+      ws.onmessage = async (ev) => {
+        const msg = JSON.parse(ev.data);
+        switch (msg.type) {
+          case 'joined':
+            role = msg.role;
+            setStatus(msg.role === 'host' ? 'Вы первый в комнате. Ждём второго участника…' : 'Второй участник. Готовим соединение…');
+            break;
+          case 'peer-joined':
+            setStatus('К вам присоединились. Готовим соединение…');
+            break;
+          case 'ready':
+            // Второй участник инициирует оффер
+            if (role === 'guest') {
+              const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+              await pc.setLocalDescription(offer);
+              send('offer', offer);
+              setStatus('Отправлен оффер…');
+            }
+            break;
+          case 'offer':
+            if (role === 'host') {
+              await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              send('answer', answer);
+              setStatus('Отправлен ответ…');
+            }
+            break;
+          case 'answer':
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+            setStatus('Идёт установление соединения…');
+            break;
+          case 'candidate':
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate));
+            } catch (e) {
+              console.error('addIceCandidate error', e);
+            }
+            break;
+          case 'leave':
+            setStatus('Собеседник покинул комнату.');
+            if (remoteVideo.srcObject) {
+              remoteVideo.srcObject.getTracks().forEach(t => t.stop());
+              remoteVideo.srcObject = null;
+            }
+            break;
+          case 'full':
+            alert('Комната уже занята двумя участниками.');
+            location.href = '/';
+            break;
+          case 'error':
+            alert('Ошибка: ' + (msg.message || 'неизвестно'));
+            break;
+        }
+      };
+      ws.onclose = () => setStatus('Сигналинг отключён. Перезагрузите страницу.');
+    }
+
+    // Кнопки
+    copyBtn.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(location.href);
+    });
+
+    camBtn.addEventListener('click', () => {
+      isCamOn = !isCamOn;
+      localStream.getVideoTracks().forEach(t => t.enabled = isCamOn);
+      camBtn.textContent = isCamOn ? 'Камера выкл' : 'Камера вкл';
+    });
+
+    micBtn.addEventListener('click', () => {
+      isMicOn = !isMicOn;
+      localStream.getAudioTracks().forEach(t => t.enabled = isMicOn);
+      micBtn.textContent = isMicOn ? 'Микрофон выкл' : 'Микрофон вкл';
+    });
+
+    hangupBtn.addEventListener('click', () => {
+      send('leave', {});
+      pc?.getSenders()?.forEach(s => s.track && s.track.stop());
+      pc?.close();
+      ws?.close();
+      location.href = '/';
+    });
+
+    // Автозапуск
+    start().catch(err => {
+      console.error(err);
+      alert('Не удалось получить доступ к камере/микрофону. Проверьте разрешения.');
+    });
+  </script>
+</body>
+</html>
