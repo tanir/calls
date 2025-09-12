@@ -2,71 +2,178 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Комната видеозвонка</title>
   <style>
-    :root { color-scheme: light dark; }
-    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0b0c; color: #fff; }
-    header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #111317; border-bottom: 1px solid #ffffff14; }
-    .roomid { font-size: 0.95rem; opacity: .8; }
+    :root {
+      color-scheme: light dark;
+      --header-h: 56px;
+      --controls-h: 72px;
+      --pad: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #0b0b0c;
+      color: #fff;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex; gap: 8px; align-items: center; justify-content: space-between;
+      height: var(--header-h);
+      padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
+      background: #111317;
+      border-bottom: 1px solid #ffffff14;
+    }
+    .roomid { font-size: .95rem; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .actions { display: flex; gap: 8px; }
-    button { background: #1f232a; color: #fff; border: 1px solid #ffffff22; padding: 10px 12px; border-radius: 12px; cursor: pointer; }
-    .grid { display: grid; grid-template-columns: 1fr 240px; gap: 10px; height: calc(100vh - 64px); padding: 10px; }
-    .video-wrap { position: relative; background: #0e1014; border: 1px solid #ffffff14; border-radius: 16px; display: grid; place-items: center; }
-    video { width: 100%; height: 100%; object-fit: cover; border-radius: 16px; }
-    .local { position: absolute; right: 12px; bottom: 12px; width: 240px; height: 135px; border: 1px solid #ffffff2a; border-radius: 12px; overflow: hidden; }
-    .sidebar { display: grid; grid-auto-rows: min-content; gap: 10px; }
-    .card { padding: 12px; background: #111317; border: 1px solid #ffffff14; border-radius: 14px; }
-    .status { font-size: .95rem; opacity: .9; }
+    button {
+      background: #1f232a; color: #fff;
+      border: 1px solid #ffffff22; padding: 10px 12px;
+      border-radius: 12px; cursor: pointer; min-height: 44px;
+      touch-action: manipulation;
+    }
+    button:active { transform: translateY(1px); }
     .danger { background: #b3261e; border-color: #b3261e; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 10px;
+      padding: var(--pad);
+      min-height: calc(100svh - var(--header-h));
+    }
+    .video-wrap {
+      position: relative;
+      background: #0e1014; border: 1px solid #ffffff14; border-radius: 16px;
+      display: grid; place-items: center; overflow: hidden;
+      min-height: 240px;
+    }
+    video { width: 100%; height: 100%; object-fit: cover; }
+    .local {
+      position: absolute; right: 12px; bottom: 12px;
+      width: min(36vw, 260px); aspect-ratio: 16/9;
+      border: 1px solid #ffffff2a; border-radius: 12px; overflow: hidden;
+      box-shadow: 0 8px 30px #00000066;
+    }
+
+    .sidebar {
+      display: grid; grid-auto-rows: min-content; gap: 10px;
+      min-height: 0;
+    }
+    .card {
+      padding: 12px; background: #111317; border: 1px solid #ffffff14; border-radius: 14px;
+    }
+    .status { font-size: .95rem; opacity: .9; }
+
+    /* Нижняя панель для мобильных */
+    .controls {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+      display: none; /* включается медиа-правилом */
+      background: #111317cc; backdrop-filter: blur(10px);
+      border-top: 1px solid #ffffff22;
+      padding: 8px max(10px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+    }
+    .controls .row {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    }
+    .controls button { width: 100%; }
+
+    /* Адаптивность */
+    @media (max-width: 1024px) {
+      .layout { grid-template-columns: 1fr 260px; }
+    }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; min-height: auto; padding-bottom: calc(var(--controls-h) + 8px); }
+      .sidebar { order: 2; }
+      .actions { display: none; } /* прячем верхние кнопки — будут снизу */
+      .controls { display: block; height: var(--controls-h); }
+      .video-wrap {
+        height: calc(var(--vh, 100svh) - var(--header-h) - var(--controls-h) - env(safe-area-inset-top));
+        border-radius: 0; border-left: 0; border-right: 0;
+      }
+      .local { width: min(40vw, 220px); }
+      header { border-radius: 0; }
+      body { background: #0e1014; }
+    }
+
+    /* Доступность фокуса */
+    button:focus-visible { outline: 2px solid #7aa2ff; outline-offset: 2px; }
   </style>
 </head>
 <body>
   <header>
     <div class="roomid">Комната: <span id="roomLabel"></span></div>
     <div class="actions">
-      <button id="copyLink">Скопировать ссылку</button>
-      <button id="toggleCam">Камера вкл/выкл</button>
-      <button id="toggleMic">Микрофон вкл/выкл</button>
-      <button id="hangup" class="danger">Завершить</button>
+      <button id="copyLink" aria-label="Скопировать ссылку">Скопировать ссылку</button>
+      <button id="toggleCam" aria-pressed="true" aria-label="Камера вкл/выкл">Камера вкл/выкл</button>
+      <button id="toggleMic" aria-pressed="true" aria-label="Микрофон вкл/выкл">Микрофон вкл/выкл</button>
+      <button id="hangup" class="danger" aria-label="Завершить звонок">Завершить</button>
     </div>
   </header>
 
-  <main class="grid">
-    <section class="video-wrap">
+  <main class="layout">
+    <section class="video-wrap" id="videoWrap">
       <video id="remoteVideo" autoplay playsinline></video>
       <video id="localVideo" class="local" autoplay muted playsinline></video>
     </section>
     <aside class="sidebar">
-      <div class="card">
-        <div class="status" id="status">Ожидание второго участника…</div>
-      </div>
-      <div class="card">
-        <div style="font-size:.95rem;">Поделитесь ссылкой с собеседником. Как только он зайдёт — вы моментально увидите друг друга.</div>
-      </div>
+      <div class="card"><div class="status" id="status">Ожидание второго участника…</div></div>
+      <div class="card"><div style="font-size:.95rem;">Поделитесь ссылкой с собеседником. Как только он зайдёт — вы моментально увидите друг друга.</div></div>
     </aside>
   </main>
 
+  <!-- Нижняя панель действий (только мобильная) -->
+  <nav class="controls" role="navigation" aria-label="Панель управления звонком">
+    <div class="row">
+      <button id="copyLinkM" aria-label="Скопировать ссылку">Ссылка</button>
+      <button id="toggleCamM" aria-pressed="true" aria-label="Камера вкл/выкл">Камера</button>
+      <button id="toggleMicM" aria-pressed="true" aria-label="Микрофон вкл/выкл">Микрофон</button>
+      <button id="hangupM" class="danger" aria-label="Завершить звонок">Завершить</button>
+    </div>
+  </nav>
+
   <script>
+    // ====== Утилиты адаптивной высоты (адресная строка мобилок) ======
+    function setVh() {
+      const h = (window.visualViewport?.height || window.innerHeight);
+      document.documentElement.style.setProperty('--vh', h + 'px');
+    }
+    setVh();
+    window.addEventListener('resize', setVh);
+    window.addEventListener('orientationchange', setVh);
+
+    // ====== Параметры и элементы ======
     const qs = new URLSearchParams(location.search);
     const roomId = qs.get('room');
     const roomLabel = document.getElementById('roomLabel');
     const statusEl = document.getElementById('status');
+
     const copyBtn = document.getElementById('copyLink');
     const camBtn = document.getElementById('toggleCam');
     const micBtn = document.getElementById('toggleMic');
     const hangupBtn = document.getElementById('hangup');
 
+    const copyBtnM = document.getElementById('copyLinkM');
+    const camBtnM = document.getElementById('toggleCamM');
+    const micBtnM = document.getElementById('toggleMicM');
+    const hangupBtnM = document.getElementById('hangupM');
+
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
+    const videoWrap  = document.getElementById('videoWrap');
 
     roomLabel.textContent = roomId || '—';
 
     if (!roomId) {
-      alert('room параметр обязателен. Вернитесь и создайте встречу.');
+      alert('Параметр room обязателен. Вернитесь и создайте встречу.');
       location.href = '/';
     }
 
+    // ====== WebRTC / Signaling ======
     let ws;
     let pc;
     let localStream;
@@ -83,59 +190,41 @@
 
     function createPeer() {
       pc = new RTCPeerConnection({ iceServers });
-
-      // Пересылаем локальные треки
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-      // Получаем удалённые треки
       pc.ontrack = (ev) => {
         const [stream] = ev.streams;
         remoteVideo.srcObject = stream;
       };
-
-      // ICE-кандидаты -> signaling
       pc.onicecandidate = (ev) => {
-        if (ev.candidate) {
-          send('candidate', { candidate: ev.candidate });
-        }
+        if (ev.candidate) send('candidate', { candidate: ev.candidate });
       };
-
       pc.onconnectionstatechange = () => {
         const s = pc.connectionState;
         if (s === 'connected') setStatus('Соединение установлено');
-        if (s === 'disconnected' || s === 'failed') setStatus('Связь потеряна. Переподключитесь или обновите страницу.');
+        if (s === 'disconnected' || s === 'failed') setStatus('Связь потеряна. Обновите страницу или переподключитесь.');
       };
     }
 
-    function setStatus(text) {
-      statusEl.textContent = text;
-    }
-
-    function send(type, data) {
-      ws?.send(JSON.stringify({ type, data, roomId }));
-    }
+    function setStatus(text) { statusEl.textContent = text; }
+    function send(type, data) { ws?.send(JSON.stringify({ type, data, roomId })); }
 
     async function start() {
       await initMedia();
       createPeer();
 
       ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
-      ws.onopen = () => {
-        send('join', { roomId });
-        setStatus('Подключаемся к комнате…');
-      };
+      ws.onopen = () => { send('join', { roomId }); setStatus('Подключаемся к комнате…'); };
       ws.onmessage = async (ev) => {
         const msg = JSON.parse(ev.data);
         switch (msg.type) {
           case 'joined':
             role = msg.role;
-            setStatus(msg.role === 'host' ? 'Вы первый в комнате. Ждём второго участника…' : 'Второй участник. Готовим соединение…');
+            setStatus(role === 'host' ? 'Вы первый в комнате. Ждём второго участника…' : 'Второй участник. Готовим соединение…');
             break;
           case 'peer-joined':
             setStatus('К вам присоединились. Готовим соединение…');
             break;
           case 'ready':
-            // Второй участник инициирует оффер
             if (role === 'guest') {
               const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
               await pc.setLocalDescription(offer);
@@ -157,18 +246,11 @@
             setStatus('Идёт установление соединения…');
             break;
           case 'candidate':
-            try {
-              await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate));
-            } catch (e) {
-              console.error('addIceCandidate error', e);
-            }
+            try { await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate)); } catch(e) { console.error(e); }
             break;
           case 'leave':
             setStatus('Собеседник покинул комнату.');
-            if (remoteVideo.srcObject) {
-              remoteVideo.srcObject.getTracks().forEach(t => t.stop());
-              remoteVideo.srcObject = null;
-            }
+            if (remoteVideo.srcObject) { remoteVideo.srcObject.getTracks().forEach(t => t.stop()); remoteVideo.srcObject = null; }
             break;
           case 'full':
             alert('Комната уже занята двумя участниками.');
@@ -182,30 +264,53 @@
       ws.onclose = () => setStatus('Сигналинг отключён. Перезагрузите страницу.');
     }
 
-    // Кнопки
-    copyBtn.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(location.href);
-    });
-
-    camBtn.addEventListener('click', () => {
+    // ====== Кнопки (десктоп и мобильные дубликаты) ======
+    async function copyLink() {
+      try { await navigator.clipboard.writeText(location.href); showToast('Ссылка скопирована'); } catch {}
+    }
+    function toggleCam() {
       isCamOn = !isCamOn;
       localStream.getVideoTracks().forEach(t => t.enabled = isCamOn);
-      camBtn.textContent = isCamOn ? 'Камера выкл' : 'Камера вкл';
-    });
-
-    micBtn.addEventListener('click', () => {
+      camBtn?.setAttribute('aria-pressed', String(isCamOn));
+      camBtnM?.setAttribute('aria-pressed', String(isCamOn));
+      camBtn && (camBtn.textContent = isCamOn ? 'Камера выкл' : 'Камера вкл');
+      camBtnM && (camBtnM.textContent = 'Камера');
+    }
+    function toggleMic() {
       isMicOn = !isMicOn;
       localStream.getAudioTracks().forEach(t => t.enabled = isMicOn);
-      micBtn.textContent = isMicOn ? 'Микрофон выкл' : 'Микрофон вкл';
-    });
-
-    hangupBtn.addEventListener('click', () => {
+      micBtn?.setAttribute('aria-pressed', String(isMicOn));
+      micBtnM?.setAttribute('aria-pressed', String(isMicOn));
+      micBtn && (micBtn.textContent = isMicOn ? 'Микрофон выкл' : 'Микрофон вкл');
+      micBtnM && (micBtnM.textContent = 'Микрофон');
+    }
+    function hangup() {
       send('leave', {});
       pc?.getSenders()?.forEach(s => s.track && s.track.stop());
       pc?.close();
       ws?.close();
       location.href = '/';
-    });
+    }
+
+    function bind(btn, handler) { btn && btn.addEventListener('click', handler); }
+    bind(copyBtn,  copyLink);  bind(copyBtnM,  copyLink);
+    bind(camBtn,   toggleCam); bind(camBtnM,   toggleCam);
+    bind(micBtn,   toggleMic); bind(micBtnM,   toggleMic);
+    bind(hangupBtn, hangup);   bind(hangupBtnM, hangup);
+
+    // Простая подсказка
+    function showToast(text) {
+      const t = document.createElement('div');
+      t.textContent = text;
+      Object.assign(t.style, {
+        position: 'fixed', left: '50%', bottom: `calc(var(--controls-h) + 16px + env(safe-area-inset-bottom))`,
+        transform: 'translateX(-50%)', background: '#1f232a', color: '#fff',
+        border: '1px solid #ffffff33', borderRadius: '12px', padding: '10px 14px',
+        zIndex: 9, boxShadow: '0 10px 30px #0008'
+      });
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1200);
+    }
 
     // Автозапуск
     start().catch(err => {

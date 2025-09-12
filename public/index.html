@@ -2,30 +2,72 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Простой видеозвонок — создать встречу</title>
   <style>
     :root { color-scheme: light dark; }
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 2rem; display: grid; place-items: center; min-height: 100vh; }
-    .card { max-width: 520px; width: 100%; border: 1px solid #9994; border-radius: 16px; padding: 24px; box-shadow: 0 6px 24px #0001; }
-    h1 { margin: 0 0 8px; font-size: 1.6rem; }
-    p { margin: 0 0 16px; opacity: .8; }
-    button { font-size: 1rem; padding: 12px 16px; border-radius: 12px; border: 1px solid #9996; cursor: pointer; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: Canvas;
+      color: CanvasText;
+      min-height: 100svh;
+      display: grid;
+      place-items: center;
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    }
+    .card {
+      width: 100%;
+      max-width: 560px;
+      border: 1px solid color-mix(in oklab, CanvasText 20%, transparent);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 12px 40px #00000010;
+      background: color-mix(in oklab, Canvas 95%, CanvasText 5%);
+    }
+    h1 { margin: 0 0 8px; font-size: clamp(1.25rem, 2.5vw + .5rem, 1.8rem); }
+    p { margin: 0 0 16px; line-height: 1.4; }
+    .actions { display: grid; gap: 12px; }
+    button {
+      font: inherit;
+      padding: 14px 16px;
+      border-radius: 14px;
+      border: 1px solid color-mix(in oklab, CanvasText 25%, transparent);
+      background: color-mix(in oklab, Canvas 92%, CanvasText 8%);
+      color: CanvasText;
+      cursor: pointer;
+      touch-action: manipulation;
+      min-height: 48px;
+    }
+    button:active { transform: translateY(1px); }
     .linkbox { display: none; margin-top: 16px; }
-    input[type="text"] { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #9996; }
-    .muted { opacity: .7; font-size: .9rem; margin-top: 8px; }
+    .row { display: grid; gap: 8px; }
+    input[type="text"] {
+      width: 100%; padding: 12px 14px; border-radius: 12px;
+      border: 1px solid color-mix(in oklab, CanvasText 25%, transparent);
+      background: color-mix(in oklab, Canvas 96%, CanvasText 4%);
+      color: CanvasText; font: inherit;
+    }
+    .muted { opacity: .75; font-size: .95rem; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>Видеозвонок за 1 клик</h1>
     <p>Нажмите «Создать встречу», получите ссылку и отправьте её собеседнику. Он откроет ссылку — и вы сразу увидите друг друга.</p>
-    <button id="createBtn">Создать встречу</button>
+
+    <div class="actions">
+      <button id="createBtn" aria-label="Создать встречу">Создать встречу</button>
+    </div>
 
     <div class="linkbox" id="linkBox">
-      <p>Ссылка на комнату:</p>
-      <input id="roomLink" type="text" readonly />
-      <p class="muted">Скопируйте и отправьте эту ссылку второму участнику.</p>
+      <div class="row">
+        <label for="roomLink" class="muted">Ссылка на комнату:</label>
+        <input id="roomLink" type="text" readonly />
+        <button id="copyBtn" aria-label="Скопировать ссылку">Скопировать ссылку</button>
+        <p class="muted">Скопируйте и отправьте эту ссылку второму участнику. Мы автоматически перенаправим вас в комнату.</p>
+      </div>
     </div>
   </div>
 
@@ -33,6 +75,7 @@
     const btn = document.getElementById('createBtn');
     const box = document.getElementById('linkBox');
     const input = document.getElementById('roomLink');
+    const copyBtn = document.getElementById('copyBtn');
 
     function randomId(len = 10) {
       const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -48,8 +91,12 @@
       url.search = `?room=${id}`;
       input.value = url.toString();
       box.style.display = 'block';
-      // Автопереход в комнату для первого пользователя
-      setTimeout(() => { location.href = url.toString(); }, 800);
+      setTimeout(() => { location.href = url.toString(); }, 700);
+    });
+
+    copyBtn?.addEventListener('click', async () => {
+      if (!input.value) return;
+      try { await navigator.clipboard.writeText(input.value); copyBtn.textContent = 'Скопировано'; setTimeout(()=>copyBtn.textContent='Скопировать ссылку',1500); } catch {}
     });
   </script>
 </body>
