@@ -12,95 +12,43 @@
       --pad: 10px;
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: #0b0b0c;
-      color: #fff;
-    }
-    header {
-      position: sticky;
-      top: 0;
-      z-index: 5;
-      display: flex; gap: 8px; align-items: center; justify-content: space-between;
-      height: var(--header-h);
-      padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
-      background: #111317;
-      border-bottom: 1px solid #ffffff14;
-    }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b0b0c; color: #fff; }
+    header { position: sticky; top: 0; z-index: 5; display: flex; gap: 8px; align-items: center; justify-content: space-between; height: var(--header-h); padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left)); background: #111317; border-bottom: 1px solid #ffffff14; }
     .roomid { font-size: .95rem; opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .actions { display: flex; gap: 8px; }
-    button {
-      background: #1f232a; color: #fff;
-      border: 1px solid #ffffff22; padding: 10px 12px;
-      border-radius: 12px; cursor: pointer; min-height: 44px;
-      touch-action: manipulation;
-    }
+    button { background: #1f232a; color: #fff; border: 1px solid #ffffff22; padding: 10px 12px; border-radius: 12px; cursor: pointer; min-height: 44px; touch-action: manipulation; }
     button:active { transform: translateY(1px); }
     .danger { background: #b3261e; border-color: #b3261e; }
 
-    .layout {
-      display: grid;
-      grid-template-columns: 1fr 300px;
-      gap: 10px;
-      padding: var(--pad);
-      min-height: calc(100svh - var(--header-h));
-    }
-    .video-wrap {
-      position: relative;
-      background: #0e1014; border: 1px solid #ffffff14; border-radius: 16px;
-      display: grid; place-items: center; overflow: hidden;
-      min-height: 240px;
-    }
+    .layout { display: grid; grid-template-columns: 1fr 300px; gap: 10px; padding: var(--pad); min-height: calc(100svh - var(--header-h)); }
+    .video-wrap { position: relative; background: #0e1014; border: 1px solid #ffffff14; border-radius: 16px; display: grid; place-items: center; overflow: hidden; min-height: 240px; }
     video { width: 100%; height: 100%; object-fit: cover; }
-    .local {
-      position: absolute; right: 12px; bottom: 12px;
-      width: min(36vw, 260px); aspect-ratio: 16/9;
-      border: 1px solid #ffffff2a; border-radius: 12px; overflow: hidden;
-      box-shadow: 0 8px 30px #00000066;
-    }
+    .local { position: absolute; right: 12px; bottom: 12px; width: min(36vw, 260px); aspect-ratio: 16/9; border: 1px solid #ffffff2a; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px #00000066; }
 
-    .sidebar {
-      display: grid; grid-auto-rows: min-content; gap: 10px;
-      min-height: 0;
-    }
-    .card {
-      padding: 12px; background: #111317; border: 1px solid #ffffff14; border-radius: 14px;
-    }
+    .overlay { position: absolute; inset: 0; display: grid; place-items: center; background: #00000066; backdrop-filter: blur(2px); }
+    .overlay.hidden { display: none; }
+    .overlay button { font-size: 1rem; padding: 14px 18px; border-radius: 14px; }
+
+    .sidebar { display: grid; grid-auto-rows: min-content; gap: 10px; min-height: 0; }
+    .card { padding: 12px; background: #111317; border: 1px solid #ffffff14; border-radius: 14px; }
     .status { font-size: .95rem; opacity: .9; }
 
-    /* Нижняя панель для мобильных */
-    .controls {
-      position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
-      display: none; /* включается медиа-правилом */
-      background: #111317cc; backdrop-filter: blur(10px);
-      border-top: 1px solid #ffffff22;
-      padding: 8px max(10px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
-    }
-    .controls .row {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
-    }
+    .controls { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: none; background: #111317cc; backdrop-filter: blur(10px); border-top: 1px solid #ffffff22; padding: 8px max(10px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); }
+    .controls .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
     .controls button { width: 100%; }
 
-    /* Адаптивность */
-    @media (max-width: 1024px) {
-      .layout { grid-template-columns: 1fr 260px; }
-    }
+    @media (max-width: 1024px) { .layout { grid-template-columns: 1fr 260px; } }
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; min-height: auto; padding-bottom: calc(var(--controls-h) + 8px); }
       .sidebar { order: 2; }
-      .actions { display: none; } /* прячем верхние кнопки — будут снизу */
+      .actions { display: none; }
       .controls { display: block; height: var(--controls-h); }
-      .video-wrap {
-        height: calc(var(--vh, 100svh) - var(--header-h) - var(--controls-h) - env(safe-area-inset-top));
-        border-radius: 0; border-left: 0; border-right: 0;
-      }
+      .video-wrap { height: calc(var(--vh, 100svh) - var(--header-h) - var(--controls-h) - env(safe-area-inset-top)); border-radius: 0; border-left: 0; border-right: 0; }
       .local { width: min(40vw, 220px); }
       header { border-radius: 0; }
       body { background: #0e1014; }
     }
 
-    /* Доступность фокуса */
     button:focus-visible { outline: 2px solid #7aa2ff; outline-offset: 2px; }
   </style>
 </head>
@@ -119,6 +67,11 @@
     <section class="video-wrap" id="videoWrap">
       <video id="remoteVideo" autoplay playsinline></video>
       <video id="localVideo" class="local" autoplay muted playsinline></video>
+
+      <!-- Оверлей «тап, чтобы начать» для мобильных/автоплея -->
+      <div id="playOverlay" class="overlay hidden">
+        <button id="startPlayback">Нажмите, чтобы начать</button>
+      </div>
     </section>
     <aside class="sidebar">
       <div class="card"><div class="status" id="status">Ожидание второго участника…</div></div>
@@ -126,7 +79,6 @@
     </aside>
   </main>
 
-  <!-- Нижняя панель действий (только мобильная) -->
   <nav class="controls" role="navigation" aria-label="Панель управления звонком">
     <div class="row">
       <button id="copyLinkM" aria-label="Скопировать ссылку">Ссылка</button>
@@ -137,71 +89,115 @@
   </nav>
 
   <script>
-    // ====== Утилиты адаптивной высоты (адресная строка мобилок) ======
+    // ====== Высота для мобильных адресных строк ======
     function setVh() {
       const h = (window.visualViewport?.height || window.innerHeight);
       document.documentElement.style.setProperty('--vh', h + 'px');
     }
-    setVh();
-    window.addEventListener('resize', setVh);
-    window.addEventListener('orientationchange', setVh);
+    setVh(); window.addEventListener('resize', setVh); window.addEventListener('orientationchange', setVh);
 
-    // ====== Параметры и элементы ======
+    // ====== Элементы/параметры ======
     const qs = new URLSearchParams(location.search);
     const roomId = qs.get('room');
     const roomLabel = document.getElementById('roomLabel');
     const statusEl = document.getElementById('status');
-
     const copyBtn = document.getElementById('copyLink');
     const camBtn = document.getElementById('toggleCam');
     const micBtn = document.getElementById('toggleMic');
     const hangupBtn = document.getElementById('hangup');
-
     const copyBtnM = document.getElementById('copyLinkM');
     const camBtnM = document.getElementById('toggleCamM');
     const micBtnM = document.getElementById('toggleMicM');
     const hangupBtnM = document.getElementById('hangupM');
-
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
-    const videoWrap  = document.getElementById('videoWrap');
+    const overlay = document.getElementById('playOverlay');
+    const startPlaybackBtn = document.getElementById('startPlayback');
 
     roomLabel.textContent = roomId || '—';
-
-    if (!roomId) {
-      alert('Параметр room обязателен. Вернитесь и создайте встречу.');
-      location.href = '/';
-    }
+    if (!roomId) { alert('Параметр room обязателен. Вернитесь и создайте встречу.'); location.href = '/'; }
 
     // ====== WebRTC / Signaling ======
-    let ws;
-    let pc;
-    let localStream;
+    let ws, pc, localStream;
     let role = 'guest';
-    let isCamOn = true;
-    let isMicOn = true;
+    let isCamOn = true, isMicOn = true;
 
-    const iceServers = [{ urls: ['stun:stun.l.google.com:19302'] }];
+    const iceServers = [
+      { urls: ['stun:stun.l.google.com:19302'] },
+      // Раскомментируйте и подставьте ваш TURN, когда будет готов:
+      // { urls: 'turn:turn.example.com:3478', username: 'webrtc', credential: 'strongpassword' },
+      // { urls: 'turns:turn.example.com:5349', username: 'webrtc', credential: 'strongpassword' },
+    ];
+
+    function log(...a){ console.log('[RTC]', ...a); }
 
     async function initMedia() {
       localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       localVideo.srcObject = localStream;
     }
 
+    function ensurePlayback() {
+      // Пытаемся запустить воспроизведение удалённого видео (мобильные/политики автоплея)
+      if (!remoteVideo) return;
+      const tryPlay = () => {
+        remoteVideo.play().then(() => {
+          overlay.classList.add('hidden');
+          log('remoteVideo playing');
+        }).catch(() => {
+          overlay.classList.remove('hidden');
+          log('remoteVideo play blocked - waiting for user gesture');
+        });
+      };
+      tryPlay();
+      remoteVideo.addEventListener('loadedmetadata', tryPlay, { once: true });
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) tryPlay(); });
+      startPlaybackBtn.addEventListener('click', tryPlay);
+    }
+
     function createPeer() {
       pc = new RTCPeerConnection({ iceServers });
+
+      // Добавляем локальные треки
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+      // Получаем удалённые треки
       pc.ontrack = (ev) => {
         const [stream] = ev.streams;
-        remoteVideo.srcObject = stream;
+        if (stream) {
+          // Назначаем поток, если ещё не назначен или заменился
+          if (remoteVideo.srcObject !== stream) {
+            remoteVideo.srcObject = stream;
+            log('Remote stream attached');
+            ensurePlayback();
+          }
+        } else {
+          // fallback на объединение по track
+          let rs = remoteVideo.srcObject;
+          if (!rs) {
+            rs = new MediaStream();
+            remoteVideo.srcObject = rs;
+          }
+          rs.addTrack(ev.track);
+          log('Remote track added (no stream in event)');
+          ensurePlayback();
+        }
       };
+
       pc.onicecandidate = (ev) => {
         if (ev.candidate) send('candidate', { candidate: ev.candidate });
       };
+
+      pc.oniceconnectionstatechange = () => {
+        log('iceConnectionState:', pc.iceConnectionState);
+        if (pc.iceConnectionState === 'connected') setStatus('Медиа-канал установлен');
+        if (pc.iceConnectionState === 'failed') setStatus('ICE failed — вероятно нужен TURN');
+      };
+
       pc.onconnectionstatechange = () => {
+        log('connectionState:', pc.connectionState);
         const s = pc.connectionState;
         if (s === 'connected') setStatus('Соединение установлено');
-        if (s === 'disconnected' || s === 'failed') setStatus('Связь потеряна. Обновите страницу или переподключитесь.');
+        if (s === 'disconnected' || s === 'failed') setStatus('Связь потеряна. Обновите страницу или включите TURN.');
       };
     }
 
@@ -221,41 +217,56 @@
             role = msg.role;
             setStatus(role === 'host' ? 'Вы первый в комнате. Ждём второго участника…' : 'Второй участник. Готовим соединение…');
             break;
+
           case 'peer-joined':
             setStatus('К вам присоединились. Готовим соединение…');
             break;
+
           case 'ready':
+            // Второй участник инициирует оффер
             if (role === 'guest') {
-              const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+              const offer = await pc.createOffer();
               await pc.setLocalDescription(offer);
               send('offer', offer);
+              log('Offer sent');
               setStatus('Отправлен оффер…');
             }
             break;
+
           case 'offer':
             if (role === 'host') {
               await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
               const answer = await pc.createAnswer();
               await pc.setLocalDescription(answer);
               send('answer', answer);
+              log('Answer sent');
               setStatus('Отправлен ответ…');
             }
             break;
+
           case 'answer':
             await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
             setStatus('Идёт установление соединения…');
             break;
+
           case 'candidate':
-            try { await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate)); } catch(e) { console.error(e); }
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate));
+            } catch (e) {
+              console.error('addIceCandidate error', e);
+            }
             break;
+
           case 'leave':
             setStatus('Собеседник покинул комнату.');
             if (remoteVideo.srcObject) { remoteVideo.srcObject.getTracks().forEach(t => t.stop()); remoteVideo.srcObject = null; }
             break;
+
           case 'full':
             alert('Комната уже занята двумя участниками.');
             location.href = '/';
             break;
+
           case 'error':
             alert('Ошибка: ' + (msg.message || 'неизвестно'));
             break;
@@ -291,14 +302,12 @@
       ws?.close();
       location.href = '/';
     }
-
     function bind(btn, handler) { btn && btn.addEventListener('click', handler); }
     bind(copyBtn,  copyLink);  bind(copyBtnM,  copyLink);
     bind(camBtn,   toggleCam); bind(camBtnM,   toggleCam);
     bind(micBtn,   toggleMic); bind(micBtnM,   toggleMic);
     bind(hangupBtn, hangup);   bind(hangupBtnM, hangup);
 
-    // Простая подсказка
     function showToast(text) {
       const t = document.createElement('div');
       t.textContent = text;
@@ -312,7 +321,7 @@
       setTimeout(() => t.remove(), 1200);
     }
 
-    // Автозапуск
+    // Старт
     start().catch(err => {
       console.error(err);
       alert('Не удалось получить доступ к камере/микрофону. Проверьте разрешения.');

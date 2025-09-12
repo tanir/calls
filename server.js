@@ -31,7 +31,7 @@ wss.on('connection', (ws) => {
     const type = msg.type;
 
     if (type === 'join') {
-      const roomId = String(msg.roomId || '').trim();
+      const roomId = String((msg.roomId || (msg.data && msg.data.roomId) || '')).trim();
       if (!roomId) return send(ws, 'error', { message: 'roomId required' });
 
       const peers = rooms.get(roomId) || new Set();
@@ -46,12 +46,12 @@ wss.on('connection', (ws) => {
       const role = peers.size === 1 ? 'host' : 'guest';
       send(ws, 'joined', { roomId, role, peersCount: peers.size });
 
-      // Уведомить остальных в комнате
+      // Уведомить остальных
       for (const peer of peers) {
         if (peer !== ws) send(peer, 'peer-joined', { roomId });
       }
 
-      // Если двое в комнате — дать сигнал "готовы"
+      // Когда двое в комнате — дать сигнал "готовы"
       if (peers.size === 2) {
         for (const peer of peers) send(peer, 'ready', { roomId });
       }
@@ -60,7 +60,6 @@ wss.on('connection', (ws) => {
 
     if (!ws.roomId) return; // Не в комнате — игнор
 
-    // Ретрансляция signaling-сообщений остальным участникам комнаты
     const peers = rooms.get(ws.roomId);
     if (!peers) return;
 
@@ -68,16 +67,23 @@ wss.on('connection', (ws) => {
       case 'offer':
       case 'answer':
       case 'candidate':
-      case 'leave':
         for (const peer of peers) {
           if (peer !== ws) send(peer, type, { data: msg.data || null });
         }
-        if (type === 'leave') {
-          peers.delete(ws);
-          ws.roomId = null;
-          if (peers.size === 0) rooms.delete(ws.roomId);
-        }
         break;
+
+      case 'leave': {
+        // Исправлено: используем текущий roomId до обнуления
+        const roomId = ws.roomId;
+        for (const peer of peers) {
+          if (peer !== ws) send(peer, 'leave', {});
+        }
+        peers.delete(ws);
+        if (peers.size === 0) rooms.delete(roomId);
+        ws.roomId = null;
+        break;
+      }
+
       default:
         send(ws, 'error', { message: `Unknown type: ${type}` });
     }
