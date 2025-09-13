@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <link rel="stylesheet" href="common.css" />
   <title>Комната видеозвонка</title>
   <style>
     :root{
@@ -30,7 +31,7 @@
       touch-action:manipulation;display:inline-flex;align-items:center;gap:8px
     }
     button:active{transform:translateY(1px)}
-    .btn-icon svg{width:22px;height:22px}
+    /* .btn-icon svg sizing moved to common.css */
     .danger{background:#b3261e;border-color:#b3261e}
 
     /* Переключение иконок on/off */
@@ -287,8 +288,8 @@
           case 'answer': await pc.setRemoteDescription(new RTCSessionDescription(msg.data)); setStatus('Идёт установление соединения…'); break;
           case 'candidate': try{ await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate)) }catch(e){ console.error('addIceCandidate',e) } break;
           case 'leave':
-            setStatus('Собеседник покинул комнату.');
-            if(remoteVideo.srcObject){ remoteVideo.srcObject.getTracks().forEach(t=>t.stop()); remoteVideo.srcObject=null; }
+            setStatus('Собеседник положил трубку.');
+            cleanup(true);
             break;
           case 'full': alert('Комната уже занята двумя участниками.'); location.href='/'; break;
           case 'error': alert('Ошибка: '+(msg.message||'неизвестно')); break;
@@ -306,10 +307,18 @@
       micHint.classList.toggle('hidden', isMicOn);
     }
 
-    async function copyLink(){ try{ await navigator.clipboard.writeText(location.href); showToast('Ссылка скопирована') }catch{} }
-    function toggleCam(){ isCamOn=!isCamOn; localStream.getVideoTracks().forEach(t=>t.enabled=isCamOn); updateCamUi(); }
-    function toggleMic(){ isMicOn=!isMicOn; localStream.getAudioTracks().forEach(t=>t.enabled=isMicOn); updateMicUi(); }
-    function hangup(){ send('leave',{}); pc?.getSenders()?.forEach(s=>s.track&&s.track.stop()); pc?.close(); ws?.close(); location.href='/' }
+      async function copyLink(){ try{ await navigator.clipboard.writeText(location.href); showToast('Ссылка скопирована') }catch{} }
+      function toggleCam(){ isCamOn=!isCamOn; localStream.getVideoTracks().forEach(t=>t.enabled=isCamOn); updateCamUi(); }
+      function toggleMic(){ isMicOn=!isMicOn; localStream.getAudioTracks().forEach(t=>t.enabled=isMicOn); updateMicUi(); }
+      function safeClose(){ window.close(); setTimeout(()=>{ location.href='/' },100); }
+      function cleanup(remote=false){
+        if(remoteVideo.srcObject){ remoteVideo.srcObject.getTracks().forEach(t=>t.stop()); remoteVideo.srcObject=null; }
+        pc?.getSenders()?.forEach(s=>s.track&&s.track.stop());
+        pc?.close();
+        ws?.close();
+        if(remote) safeClose();
+      }
+      function hangup(){ send('leave',{}); cleanup(false); safeClose(); }
 
     function bind(el,fn){ el&&el.addEventListener('click',fn) }
     bind(copyBtn,copyLink); bind(copyBtnM,copyLink);
