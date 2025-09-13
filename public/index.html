@@ -26,6 +26,7 @@
     <p>Нажмите «Создать встречу» — получите <b>подписанную ссылку</b> и отправьте её собеседнику. Ему логин не нужен.</p>
     <div class="actions">
       <button id="createBtn" aria-label="Создать встречу">Создать встречу</button>
+      <button id="createAudioBtn" aria-label="Создать аудиозвонок">Создать аудиозвонок</button>
       <form method="post" action="/logout"><button type="submit">Выйти из админ-режима</button></form>
     </div>
 
@@ -51,6 +52,20 @@
         setTimeout(() => { location.href = data.link; }, 700);
       } catch (e) {
         alert('Не удалось создать встречу: ' + e.message);
+      }
+    });
+
+    const audioBtn = document.getElementById('createAudioBtn');
+    audioBtn.addEventListener('click', async () => {
+      try {
+        const r = await fetch('/api/create-audio-room', { method: 'POST' });
+        if (r.status === 401) { location.href = '/login.html'; return; }
+        const data = await r.json();
+        input.value = data.link;
+        box.style.display = 'block';
+        setTimeout(() => { location.href = data.link; }, 700);
+      } catch (e) {
+        alert('Не удалось создать аудиовстречу: ' + e.message);
       }
     });
   </script>

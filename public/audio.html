@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Аудиозвонок</title>
+  <style>
+    :root{color-scheme: light dark;}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0b0c;color:#fff;display:flex;flex-direction:column;min-height:100vh}
+    header{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#111317;border-bottom:1px solid #ffffff14}
+    .actions{display:flex;gap:8px}
+    button{background:#1f232a;color:#fff;border:1px solid #ffffff22;padding:10px 12px;border-radius:12px;cursor:pointer;min-height:44px;display:inline-flex;align-items:center;gap:8px}
+    button:active{transform:translateY(1px)}
+    .btn-icon svg{width:22px;height:22px}
+    .btn-icon .off-ico{display:none}
+    .btn-icon.off .on-ico{display:none}
+    .btn-icon.off .off-ico{display:inline}
+    .danger{background:#b3261e;border-color:#b3261e}
+    .status{flex:1;display:grid;place-items:center;padding:20px;text-align:center}
+    .mic-hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);background:#b3261ee6;color:#fff;border:1px solid #ffffff44;border-radius:12px;padding:8px 12px;font-weight:600;z-index:6}
+    .mic-hint.hidden{display:none}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="roomid">Комната: <span id="roomLabel"></span></div>
+    <div class="actions">
+      <button id="toggleSpeaker" class="btn-icon" aria-pressed="false" aria-label="Включить громкую связь">
+        <svg class="icon on-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 5L6 9H2v6h4l5 4z"/>
+          <path d="M15 9a5 5 0 0 1 0 6"/>
+          <path d="M19 5a9 9 0 0 1 0 14"/>
+        </svg>
+        <svg class="icon off-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 1l22 22"/>
+          <path d="M11 5L6 9H2v6h4l5 4z"/>
+          <path d="M15 9a5 5 0 0 1 0 6"/>
+          <path d="M19 5a9 9 0 0 1 0 14"/>
+        </svg>
+      </button>
+      <button id="toggleMic" class="btn-icon" aria-pressed="true" aria-label="Выключить микрофон">
+        <svg class="icon on-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 1a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-7 7 7 7 0 0 1-7-7v-2"/>
+          <path d="M12 19v4"/>
+        </svg>
+        <svg class="icon off-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M1 1l22 22"/><rect x="9" y="2" width="6" height="12" rx="3"/>
+          <path d="M5 10v2a7 7 0 0 0 10.5 6.1"/><path d="M12 19v3"/>
+        </svg>
+      </button>
+      <button id="hangup" class="danger btn-icon" aria-label="Завершить звонок">
+        <svg class="icon on-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M22 16a3 3 0 0 0-3-3h-3a3 3 0 0 0-3 3v1a2 2 0 0 1-2 2H8a3 3 0 0 1-3-3v-1C5 8 12 2 20 2h1a3 3 0 0 1 3 3v3"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+  <div id="micHint" class="mic-hint hidden">Включи микрофон</div>
+  <div class="status"><div id="status">Подключаемся…</div></div>
+  <audio id="remoteAudio" autoplay playsinline></audio>
+<script>
+  const qs=new URLSearchParams(location.search);
+  const roomId=qs.get('room');
+  const token=qs.get('token');
+  const roomLabel=document.getElementById('roomLabel');
+  const statusEl=document.getElementById('status');
+  const speakerBtn=document.getElementById('toggleSpeaker');
+  const micBtn=document.getElementById('toggleMic');
+  const hangupBtn=document.getElementById('hangup');
+  const remoteAudio=document.getElementById('remoteAudio');
+  const micHint=document.getElementById('micHint');
+
+  roomLabel.textContent=roomId||'—';
+  if(!roomId||!token){alert('Неверная ссылка: отсутствует room или token.');location.href='/'}
+
+  let ws,pc,localStream;let role='guest';let isMicOn=true;let isSpeakerOn=false;
+  const iceServers=[{urls:['stun:stun.l.google.com:19302']}];
+
+  function setStatus(t){statusEl.textContent=t}
+  function send(type,data){ws?.send(JSON.stringify({type,data,roomId,token}))}
+
+  async function initMedia(){
+    localStream=await navigator.mediaDevices.getUserMedia({audio:true});
+  }
+
+  function ensurePlayback(){
+    const tryPlay=()=>{remoteAudio.play().catch(()=>{})};
+    tryPlay();remoteAudio.addEventListener('loadedmetadata',tryPlay,{once:true});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)tryPlay()});
+  }
+
+  function createPeer(){
+    pc=new RTCPeerConnection({iceServers});
+    localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
+    pc.ontrack=ev=>{const [stream]=ev.streams;if(stream&&remoteAudio.srcObject!==stream){remoteAudio.srcObject=stream;ensurePlayback();}};
+    pc.onicecandidate=ev=>{if(ev.candidate)send('candidate',{candidate:ev.candidate})};
+    pc.onconnectionstatechange=()=>{
+      const s=pc.connectionState;
+      if(s==='connected')setStatus('Соединение установлено');
+      if(s==='disconnected'||s==='failed')setStatus('Связь потеряна. Обновите страницу.');
+    };
+  }
+
+  async function start(){
+    await initMedia();createPeer();
+    ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);
+    ws.onopen=()=>{send('join',{roomId,token});setStatus('Подключаемся к комнате…')};
+    ws.onmessage=async ev=>{
+      const msg=JSON.parse(ev.data);
+      switch(msg.type){
+        case 'joined':
+          role=msg.role;setStatus(role==='host'?'Вы первый в комнате. Ждём второго участника…':'Второй участник. Готовим соединение…');
+          break;
+        case 'peer-joined':
+          setStatus('К вам присоединились. Готовим соединение…');
+          break;
+        case 'ready':
+          if(role==='guest'){const offer=await pc.createOffer();await pc.setLocalDescription(offer);send('offer',offer);setStatus('Отправлен оффер…');}
+          break;
+        case 'offer':
+          if(role==='host'){await pc.setRemoteDescription(new RTCSessionDescription(msg.data));const answer=await pc.createAnswer();await pc.setLocalDescription(answer);send('answer',answer);setStatus('Отправлен ответ…');}
+          break;
+        case 'answer':
+          await pc.setRemoteDescription(new RTCSessionDescription(msg.data));setStatus('Идёт установление соединения…');
+          break;
+        case 'candidate':
+          try{await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate))}catch(e){console.error('addIceCandidate',e)}
+          break;
+        case 'leave':
+          setStatus('Собеседник положил трубку.');
+          cleanup(true);
+          break;
+        case 'full':
+          alert('Комната уже занята двумя участниками.');location.href='/';
+          break;
+        case 'error':
+          alert('Ошибка: '+(msg.message||'неизвестно'));
+          break;
+      }
+    };
+    ws.onclose=()=>setStatus('Сигналинг отключён. Перезагрузите страницу.');
+  }
+
+  function updateMicUi(){
+    micBtn.classList.toggle('off',!isMicOn);
+    micBtn.setAttribute('aria-pressed',String(isMicOn));
+    micBtn.setAttribute('aria-label',isMicOn?'Выключить микрофон':'Включить микрофон');
+    micHint.classList.toggle('hidden',isMicOn);
+  }
+  function updateSpeakerUi(){
+    speakerBtn.classList.toggle('off',!isSpeakerOn);
+    speakerBtn.setAttribute('aria-pressed',String(isSpeakerOn));
+    speakerBtn.setAttribute('aria-label',isSpeakerOn?'Выключить громкую связь':'Включить громкую связь');
+  }
+  function toggleMic(){isMicOn=!isMicOn;localStream.getAudioTracks().forEach(t=>t.enabled=isMicOn);updateMicUi();}
+  async function toggleSpeaker(){
+    if(typeof remoteAudio.sinkId==='undefined'){alert('Переключение громкой связи не поддерживается');return;}
+    try{await remoteAudio.setSinkId(isSpeakerOn?'default':'speaker');isSpeakerOn=!isSpeakerOn;updateSpeakerUi();}catch(e){console.error(e);}
+  }
+
+  function safeClose(){window.close();setTimeout(()=>{location.href='/'},100);}
+  function cleanup(remote=false){pc?.getSenders()?.forEach(s=>s.track&&s.track.stop());pc?.close();ws?.close();if(remote)safeClose();}
+  function hangup(){send('leave',{});cleanup(false);safeClose();}
+
+  speakerBtn.addEventListener('click',toggleSpeaker);
+  micBtn.addEventListener('click',toggleMic);
+  hangupBtn.addEventListener('click',hangup);
+
+  updateMicUi();updateSpeakerUi();
+  start().catch(err=>{console.error(err);alert('Не удалось получить доступ к микрофону. Проверьте разрешения.')});
+</script>
+</body>
+</html>
