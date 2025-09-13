@@ -160,6 +160,7 @@ wss.on('connection', (ws) => {
       case 'offer':
       case 'answer':
       case 'candidate':
+      case 'force-relay':
         for (const peer of peers) {
           if (peer !== ws) send(peer, type, { data: msg.data || null });
         }

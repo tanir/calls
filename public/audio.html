@@ -76,6 +76,7 @@
   // Упрощено: ждём room/token только из query
 
   let ws,pc,localStream;let role='guest';let isMicOn=true;let isSpeakerOn=false;let offerStarted=false;
+  let relayMode=false; let iceRestartTried=false; let relaySwitchTried=false;
   let iceServers=[{urls:['stun:stun.l.google.com:19302']}];
   async function loadIce(){
     try{
@@ -98,7 +99,7 @@
   }
 
   function createPeer(){
-    pc=new RTCPeerConnection({iceServers});
+    pc=new RTCPeerConnection({iceServers, iceTransportPolicy: relayMode?'relay':'all'});
     localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
     pc.ontrack=ev=>{const [stream]=ev.streams;if(stream&&remoteAudio.srcObject!==stream){remoteAudio.srcObject=stream;ensurePlayback();}};
     pc.onicecandidate=ev=>{if(ev.candidate)send('candidate',{candidate:ev.candidate})};
@@ -106,6 +107,18 @@
       const s=pc.connectionState;
       if(s==='connected')setStatus('Соединение установлено');
       if(s==='disconnected'||s==='failed')setStatus('Связь потеряна. Обновите страницу.');
+    };
+    pc.oniceconnectionstatechange=async()=>{
+      const s=pc.iceConnectionState;
+      if(s==='failed'){
+        setStatus('ICE failed — пытаемся восстановить…');
+        if(!iceRestartTried){
+          try{ iceRestartTried=true; const offer=await pc.createOffer({iceRestart:true}); await pc.setLocalDescription(offer); send('offer',offer); }
+          catch(e){ console.error('iceRestart',e); }
+        } else if(!relaySwitchTried){
+          relaySwitchTried=true; send('force-relay',{}); switchToRelay();
+        }
+      }
     };
   }
 
@@ -151,6 +164,9 @@
         case 'candidate':
           try{await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate))}catch(e){console.error('addIceCandidate',e)}
           break;
+        case 'force-relay':
+          if(!relayMode){ switchToRelay(); }
+          break;
         case 'leave':
           setStatus('Собеседник положил трубку.');
           cleanup(true);
@@ -164,6 +180,13 @@
       }
     };
     ws.onclose=()=>setStatus('Сигналинг отключён. Перезагрузите страницу.');
+  }
+
+  function switchToRelay(){
+    try{ pc?.close(); }catch{}
+    offerStarted=false; relayMode=true;
+    createPeer();
+    (async()=>{ try{ const offer=await pc.createOffer(); await pc.setLocalDescription(offer); send('offer',offer); setStatus('Оффер через TURN…'); }catch(e){ console.error('relay offer',e) } })();
   }
 
   function updateMicUi(){
