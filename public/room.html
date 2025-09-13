@@ -85,7 +85,8 @@
     .controls .row{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px}
     .controls button{width:100%}
 
-    @media(max-width:1024px){.layout{grid-template-columns:1fr 260px}}
+    /* Убрана узкая правая колонка на средних экранах */
+    /* @media(max-width:1024px){.layout{grid-template-columns:1fr 260px}} */
     @media(max-width:900px){
       .sidebar{order:2}
       /* Компактная кнопка «Завершить» без лишнего пустого места */
@@ -217,7 +218,7 @@
     let ws,pc,localStream; let role='guest'; let isCamOn=true,isMicOn=true; let offerStarted=false;
     let relayMode=false; let iceRestartTried=false; let relaySwitchTried=false;
 
-    let iceServers=[{urls:['stun:stun.l.google.com:19302']}];
+    let iceServers=[{urls:['stun:stun.sipnet.ru:3478','stun:stun.l.google.com:19302']}];
     async function loadIce(){
       try{
         const r=await fetch('/api/ice');

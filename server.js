@@ -200,8 +200,8 @@ server.listen(PORT, () => {
 });
 // === ICE/TURN конфиг ===
 function buildIceServers() {
-  // По умолчанию только публичный STUN Google
-  let ice = [{ urls: ['stun:stun.l.google.com:19302'] }];
+  // По умолчанию: STUN в РФ (SIPNET) + Google STUN
+  let ice = [{ urls: ['stun:stun.sipnet.ru:3478','stun:stun.l.google.com:19302'] }];
 
   // Приоритет: явный JSON из ICE_SERVERS
   if (ICE_SERVERS_JSON) {

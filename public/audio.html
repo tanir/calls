@@ -77,7 +77,7 @@
 
   let ws,pc,localStream;let role='guest';let isMicOn=true;let isSpeakerOn=false;let offerStarted=false;
   let relayMode=false; let iceRestartTried=false; let relaySwitchTried=false;
-  let iceServers=[{urls:['stun:stun.l.google.com:19302']}];
+  let iceServers=[{urls:['stun:stun.sipnet.ru:3478','stun:stun.l.google.com:19302']}];
   async function loadIce(){
     try{
       const r=await fetch('/api/ice');
