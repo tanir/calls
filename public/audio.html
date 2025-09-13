@@ -76,7 +76,13 @@
   // Упрощено: ждём room/token только из query
 
   let ws,pc,localStream;let role='guest';let isMicOn=true;let isSpeakerOn=false;let offerStarted=false;
-  const iceServers=[{urls:['stun:stun.l.google.com:19302']}];
+  let iceServers=[{urls:['stun:stun.l.google.com:19302']}];
+  async function loadIce(){
+    try{
+      const r=await fetch('/api/ice');
+      if(r.ok){ const d=await r.json(); if(Array.isArray(d.iceServers)) iceServers=d.iceServers; }
+    }catch{}
+  }
 
   function setStatus(t){statusEl.textContent=t}
   function send(type,data){ws?.send(JSON.stringify({type,data,roomId,token}))}
@@ -104,6 +110,7 @@
   }
 
   async function start(){
+    await loadIce();
     roomLabel.textContent=roomId||'—';
     if(!roomId||!token){alert('Неверная ссылка: отсутствует room или token.');location.href='/';return}
     await initMedia();createPeer();

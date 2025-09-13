@@ -14,6 +14,10 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin_password_change_me_n
 const JWT_SECRET     = process.env.JWT_SECRET     || 'jwt_signing_secret_change_me_now';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'session_secret_change_me_now';
 const TOKEN_TTL      = process.env.TOKEN_TTL      || '6h'; // срок жизни ссылки
+const ICE_SERVERS_JSON = process.env.ICE_SERVERS || '';
+const TURN_URL   = process.env.TURN_URL   || '';
+const TURN_USER  = process.env.TURN_USER  || '';
+const TURN_PASS  = process.env.TURN_PASS  || '';
 
 // Статика и парсеры
 app.use(express.urlencoded({ extended: false }));
@@ -192,4 +196,32 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Listening on http://localhost:${PORT}`);
   console.log(`Login page: http://localhost:${PORT}/login.html`);
+});
+// === ICE/TURN конфиг ===
+function buildIceServers() {
+  // По умолчанию только публичный STUN Google
+  let ice = [{ urls: ['stun:stun.l.google.com:19302'] }];
+
+  // Приоритет: явный JSON из ICE_SERVERS
+  if (ICE_SERVERS_JSON) {
+    try {
+      const parsed = JSON.parse(ICE_SERVERS_JSON);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch (e) {
+      console.warn('ICE_SERVERS env is not valid JSON, falling back.');
+    }
+  }
+
+  // Лёгкая конфигурация через TURN_* переменные
+  if (TURN_URL && TURN_USER && TURN_PASS) {
+    ice = [
+      ...ice,
+      { urls: TURN_URL, username: TURN_USER, credential: TURN_PASS }
+    ];
+  }
+  return ice;
+}
+
+app.get('/api/ice', (_req, res) => {
+  res.json({ iceServers: buildIceServers() });
 });
