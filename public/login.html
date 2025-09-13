@@ -21,9 +21,16 @@
     <h1>Вход для создания встреч</h1>
     <p class="muted">Гость не требует логина — достаточно ссылки.</p>
     <form method="post" action="/login">
+      <input type="hidden" name="next" id="nextField" />
       <input type="password" name="password" placeholder="Админ-пароль" autocomplete="current-password" required />
       <button type="submit">Войти</button>
     </form>
   </div>
+  <script>
+    // Пробрасываем next из query в форму
+    const usp = new URLSearchParams(location.search);
+    const next = usp.get('next');
+    if (next && next.startsWith('/')) document.getElementById('nextField').value = next;
+  </script>
 </body>
 </html>

@@ -23,10 +23,10 @@
 <body>
   <div class="card">
     <h1>Звонок за 1 клик</h1>
-    <p>Нажмите «Создать видеозвонок/аудиозвонок — получите <b>подписанную ссылку</b> и отправьте её собеседнику. Ему логин не нужен.</p>
+    <p>Нажмите «Создать видеозвонок/аудиозвонок» — получите <b>короткую ссылку</b> и отправьте её собеседнику. Ему логин не нужен.</p>
     <div class="actions">
-      <button id="createBtn" aria-label="Создать встречу">Создать видеозвонок</button>
-      <button id="createAudioBtn" aria-label="Создать аудиозвонок">Создать аудиозвонок</button></form>
+      <button id="createBtn" aria-label="Создать видеозвонок">Создать видеозвонок</button>
+      <button id="createAudioBtn" aria-label="Создать аудиозвонок">Создать аудиозвонок</button>
     </div>
 
     <div class="linkbox" id="linkBox">
@@ -44,11 +44,11 @@
     btn.addEventListener('click', async () => {
       try {
         const r = await fetch('/api/create-room', { method: 'POST' });
-        if (r.status === 401) { location.href = '/login.html'; return; }
+        if (r.status === 401) { location.href = '/login.html?next=/go/create-video'; return; }
         const data = await r.json();
-        input.value = data.link;
+        input.value = data.shortLink || data.link;
         box.style.display = 'block';
-        setTimeout(() => { location.href = data.link; }, 700);
+        setTimeout(() => { location.href = data.shortLink || data.link; }, 700);
       } catch (e) {
         alert('Не удалось создать встречу: ' + e.message);
       }
@@ -58,11 +58,11 @@
     audioBtn.addEventListener('click', async () => {
       try {
         const r = await fetch('/api/create-audio-room', { method: 'POST' });
-        if (r.status === 401) { location.href = '/login.html'; return; }
+        if (r.status === 401) { location.href = '/login.html?next=/go/create-audio'; return; }
         const data = await r.json();
-        input.value = data.link;
+        input.value = data.shortLink || data.link;
         box.style.display = 'block';
-        setTimeout(() => { location.href = data.link; }, 700);
+        setTimeout(() => { location.href = data.shortLink || data.link; }, 700);
       } catch (e) {
         alert('Не удалось создать аудиовстречу: ' + e.message);
       }
