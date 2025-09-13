@@ -122,14 +122,21 @@ app.post('/api/create-audio-room', (req, res) => {
 app.get('/r/:code', (req, res) => {
   const v = shortLinks.get(req.params.code);
   if (!v || v.kind !== 'video') return res.status(404).send('Ссылка не найдена или устарела');
-  return res.redirect(`/room.html?room=${v.roomId}&token=${encodeURIComponent(v.token)}`);
+  return res.sendFile(path.join(__dirname, 'public', 'room.html'));
 });
 
 // /a/:code -> audio.html
 app.get('/a/:code', (req, res) => {
   const v = shortLinks.get(req.params.code);
   if (!v || v.kind !== 'audio') return res.status(404).send('Ссылка не найдена или устарела');
-  return res.redirect(`/audio.html?room=${v.roomId}&token=${encodeURIComponent(v.token)}`);
+  return res.sendFile(path.join(__dirname, 'public', 'audio.html'));
+});
+
+// Обмен короткого кода на параметры комнаты
+app.get('/api/resolve/:code', (req, res) => {
+  const v = shortLinks.get(req.params.code);
+  if (!v) return res.status(404).json({ error: 'not_found' });
+  return res.json({ kind: v.kind, roomId: v.roomId, token: v.token });
 });
 
 // Прямые переходы после логина: создают комнату и редиректят

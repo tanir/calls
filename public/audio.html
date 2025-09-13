@@ -63,8 +63,8 @@
   <audio id="remoteAudio" autoplay playsinline></audio>
 <script>
   const qs=new URLSearchParams(location.search);
-  const roomId=qs.get('room');
-  const token=qs.get('token');
+  let roomId=qs.get('room');
+  let token=qs.get('token');
   const roomLabel=document.getElementById('roomLabel');
   const statusEl=document.getElementById('status');
   const speakerBtn=document.getElementById('toggleSpeaker');
@@ -73,8 +73,19 @@
   const remoteAudio=document.getElementById('remoteAudio');
   const micHint=document.getElementById('micHint');
 
-  roomLabel.textContent=roomId||'—';
-  if(!roomId||!token){alert('Неверная ссылка: отсутствует room или token.');location.href='/'}
+  async function resolveParams(){
+    if(roomId && token) return true;
+    const path=location.pathname||'';
+    const m=path.match(/^\/(r|a)\/([a-z0-9]+)/i);
+    if(!m) return false;
+    try{
+      const r=await fetch(`/api/resolve/${m[2]}`);
+      if(!r.ok) return false;
+      const data=await r.json();
+      if(data.kind!=='audio') return false;
+      roomId=data.roomId; token=data.token; return true;
+    }catch{ return false; }
+  }
 
   let ws,pc,localStream;let role='guest';let isMicOn=true;let isSpeakerOn=false;
   const iceServers=[{urls:['stun:stun.l.google.com:19302']}];
@@ -105,6 +116,9 @@
   }
 
   async function start(){
+    const ok = await resolveParams();
+    if(!ok || !roomId || !token){ alert('Неверная или просроченная ссылка.'); location.href='/'; return; }
+    roomLabel.textContent=roomId||'—';
     await initMedia();createPeer();
     ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);
     ws.onopen=()=>{send('join',{roomId,token});setStatus('Подключаемся к комнате…')};
