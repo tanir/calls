@@ -28,32 +28,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Простая in-memory карта комнат: roomId -> Set(ws)
 const rooms = new Map();
 
-// Короткие ссылки: code -> { roomId, token, kind: 'video'|'audio', expiresAt }
-const shortLinks = new Map();
-
-function genCode(len = 6) {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let out = '';
-  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
-}
-
-function makeShort(kind, roomId, token, ttlMs) {
-  // Пытаемся сгенерировать несуществующий код
-  let code = genCode();
-  while (shortLinks.has(code)) code = genCode();
-  const expiresAt = Date.now() + ttlMs;
-  shortLinks.set(code, { kind, roomId, token, expiresAt });
-  return code;
-}
-
-// Периодически чистим протухшие короткие ссылки
-setInterval(() => {
-  const now = Date.now();
-  for (const [code, v] of shortLinks) {
-    if (v.expiresAt && v.expiresAt < now) shortLinks.delete(code);
-  }
-}, 60_000).unref?.();
+// Упрощено: без коротких ссылок
 
 function send(ws, type, payload = {}) {
   if (ws.readyState === WebSocket.OPEN) {
@@ -94,13 +69,8 @@ app.post('/api/create-room', (req, res) => {
   const roomId = randomId(8);
   const token = jwt.sign({ roomId }, JWT_SECRET, { expiresIn: TOKEN_TTL });
 
-  const ttlMs = typeof TOKEN_TTL === 'string' && TOKEN_TTL.endsWith('h')
-    ? parseInt(TOKEN_TTL) * 3600_000
-    : 6 * 3600_000;
-  const code = makeShort('video', roomId, token, ttlMs);
-  const shortLink = `${req.protocol}://${req.get('host')}/r/${code}`;
   const link = `${req.protocol}://${req.get('host')}/room.html?room=${roomId}&token=${encodeURIComponent(token)}`;
-  res.json({ roomId, token, link, shortLink, expiresIn: TOKEN_TTL });
+  res.json({ roomId, token, link, expiresIn: TOKEN_TTL });
 });
 
 app.post('/api/create-audio-room', (req, res) => {
@@ -109,57 +79,25 @@ app.post('/api/create-audio-room', (req, res) => {
   const roomId = randomId(8);
   const token = jwt.sign({ roomId }, JWT_SECRET, { expiresIn: TOKEN_TTL });
 
-  const ttlMs = typeof TOKEN_TTL === 'string' && TOKEN_TTL.endsWith('h')
-    ? parseInt(TOKEN_TTL) * 3600_000
-    : 6 * 3600_000;
-  const code = makeShort('audio', roomId, token, ttlMs);
-  const shortLink = `${req.protocol}://${req.get('host')}/a/${code}`;
   const link = `${req.protocol}://${req.get('host')}/audio.html?room=${roomId}&token=${encodeURIComponent(token)}`;
-  res.json({ roomId, token, link, shortLink, expiresIn: TOKEN_TTL });
+  res.json({ roomId, token, link, expiresIn: TOKEN_TTL });
 });
 
-// Короткие переходы: /r/:code -> room.html?room=...&token=...
-app.get('/r/:code', (req, res) => {
-  const v = shortLinks.get(req.params.code);
-  if (!v || v.kind !== 'video') return res.status(404).send('Ссылка не найдена или устарела');
-  return res.sendFile(path.join(__dirname, 'public', 'room.html'));
-});
-
-// /a/:code -> audio.html
-app.get('/a/:code', (req, res) => {
-  const v = shortLinks.get(req.params.code);
-  if (!v || v.kind !== 'audio') return res.status(404).send('Ссылка не найдена или устарела');
-  return res.sendFile(path.join(__dirname, 'public', 'audio.html'));
-});
-
-// Обмен короткого кода на параметры комнаты
-app.get('/api/resolve/:code', (req, res) => {
-  const v = shortLinks.get(req.params.code);
-  if (!v) return res.status(404).json({ error: 'not_found' });
-  return res.json({ kind: v.kind, roomId: v.roomId, token: v.token });
-});
+// Удалены короткие маршруты и API resolve
 
 // Прямые переходы после логина: создают комнату и редиректят
 app.get('/go/create-video', (req, res) => {
   if (!req.session?.auth) return res.redirect('/login.html?next=/go/create-video');
   const roomId = randomId(8);
   const token = jwt.sign({ roomId }, JWT_SECRET, { expiresIn: TOKEN_TTL });
-  const ttlMs = typeof TOKEN_TTL === 'string' && TOKEN_TTL.endsWith('h')
-    ? parseInt(TOKEN_TTL) * 3600_000
-    : 6 * 3600_000;
-  const code = makeShort('video', roomId, token, ttlMs);
-  return res.redirect(`/r/${code}`);
+  return res.redirect(`/room.html?room=${roomId}&token=${encodeURIComponent(token)}`);
 });
 
 app.get('/go/create-audio', (req, res) => {
   if (!req.session?.auth) return res.redirect('/login.html?next=/go/create-audio');
   const roomId = randomId(8);
   const token = jwt.sign({ roomId }, JWT_SECRET, { expiresIn: TOKEN_TTL });
-  const ttlMs = typeof TOKEN_TTL === 'string' && TOKEN_TTL.endsWith('h')
-    ? parseInt(TOKEN_TTL) * 3600_000
-    : 6 * 3600_000;
-  const code = makeShort('audio', roomId, token, ttlMs);
-  return res.redirect(`/a/${code}`);
+  return res.redirect(`/audio.html?room=${roomId}&token=${encodeURIComponent(token)}`);
 });
 
 // === WebSocket сигналинг с проверкой токена ===
