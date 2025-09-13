@@ -155,7 +155,6 @@
       </div>
     </section>
     <aside class="sidebar">
-      <div class="card"><div class="status" id="status">Ожидание второго участника…</div></div>
       <div class="card"><div style="font-size:.95rem;">Поделитесь ссылкой с собеседником. Как только он зайдёт — вы моментально увидите друг друга.</div></div>
     </aside>
   </main>
@@ -228,7 +227,7 @@
       }catch{}
     }
 
-    function setStatus(t){statusEl.textContent=t}
+    function setStatus(t){ if(statusEl) statusEl.textContent=t }
     function send(type,data){ws?.send(JSON.stringify({type,data,roomId,token}))}
 
     async function initMedia(){
