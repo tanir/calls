@@ -67,6 +67,16 @@ app.post('/api/create-room', (req, res) => {
   res.json({ roomId, token, link, expiresIn: TOKEN_TTL });
 });
 
+app.post('/api/create-audio-room', (req, res) => {
+  if (!req.session?.auth) return res.status(401).json({ error: 'unauthorized' });
+
+  const roomId = randomId(8);
+  const token = jwt.sign({ roomId }, JWT_SECRET, { expiresIn: TOKEN_TTL });
+
+  const link = `${req.protocol}://${req.get('host')}/audio.html?room=${roomId}&token=${encodeURIComponent(token)}`;
+  res.json({ roomId, token, link, expiresIn: TOKEN_TTL });
+});
+
 // === WebSocket сигналинг с проверкой токена ===
 wss.on('connection', (ws) => {
   ws.roomId = null;
