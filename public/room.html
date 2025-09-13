@@ -88,6 +88,7 @@
       .sidebar{order:2}
       .actions{display:none}
       .controls{display:block;height:var(--controls-h)}
+      .controls .row{grid-template-columns:1fr 1fr 1fr auto}
       .video-wrap{
         height:calc(var(--vh,100svh) - var(--header-h) - var(--controls-h) - env(safe-area-inset-top));
         border-radius:0;border-left:0;border-right:0
@@ -96,6 +97,8 @@
         width:var(--pip-w-mobile) !important;
         height:calc(var(--pip-w-mobile) * 1.125) !important;
       }
+      /* Компактная кнопка «Завершить» без лишнего пустого места */
+      #hangupM{width:auto;justify-content:center;padding:12px;min-width:56px}
       header{border-radius:0}
       body{background:#0e1014}
     }
