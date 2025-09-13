@@ -226,7 +226,7 @@
 
     // Упрощено: ждём room/token только из query
 
-    let ws,pc,localStream; let role='guest'; let isCamOn=true,isMicOn=true;
+    let ws,pc,localStream; let role='guest'; let isCamOn=true,isMicOn=true; let offerStarted=false;
 
     const iceServers=[{urls:['stun:stun.l.google.com:19302']}];
 
@@ -282,9 +282,25 @@
         const msg=JSON.parse(ev.data);
         switch(msg.type){
           case 'joined': role=msg.role; setStatus(role==='host'?'Вы первый в комнате. Ждём второго участника…':'Второй участник. Готовим соединение…'); break;
-          case 'peer-joined': setStatus('К вам присоединились. Готовим соединение…'); break;
+          case 'peer-joined':
+            setStatus('К вам присоединились. Готовим соединение…');
+            if(role==='host' && !offerStarted){
+              try{
+                offerStarted=true;
+                const offer=await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                send('offer',offer);
+                setStatus('Отправлен оффер (host)…');
+              }catch(e){ console.error('host offer', e); offerStarted=false; }
+            }
+            break;
           case 'ready':
-            if(role==='guest'){ const offer=await pc.createOffer(); await pc.setLocalDescription(offer); send('offer',offer); setStatus('Отправлен оффер…'); }
+            if(role==='guest' && !offerStarted){
+              try{
+                offerStarted=true;
+                const offer=await pc.createOffer(); await pc.setLocalDescription(offer); send('offer',offer); setStatus('Отправлен оффер (guest)…');
+              }catch(e){ console.error('guest offer', e); offerStarted=false; }
+            }
             break;
           case 'offer':
             if(role==='host'){ await pc.setRemoteDescription(new RTCSessionDescription(msg.data)); const answer=await pc.createAnswer(); await pc.setLocalDescription(answer); send('answer',answer); setStatus('Отправлен ответ…'); }
