@@ -226,3 +226,11 @@ function buildIceServers() {
 app.get('/api/ice', (_req, res) => {
   res.json({ iceServers: buildIceServers() });
 });
+
+// Только TURN для фиксированного webrtcuser: берёт пароль из переменных окружения
+app.get('/api/turn', (_req, res) => {
+  const url = TURN_URL || 'turn:64.226.121.112:3478';
+  const username = TURN_USER || 'webrtcuser';
+  const credential = TURN_PASS || '';
+  res.json({ iceServers: [{ urls: [url], username, credential }] });
+});
