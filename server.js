@@ -198,34 +198,6 @@ server.listen(PORT, () => {
   console.log(`Listening on http://localhost:${PORT}`);
   console.log(`Login page: http://localhost:${PORT}/login.html`);
 });
-// === ICE/TURN конфиг ===
-function buildIceServers() {
-  // По умолчанию: STUN в РФ (SIPNET) + Google STUN
-  let ice = [{ urls: ['stun:stun.sipnet.ru:3478','stun:stun.l.google.com:19302'] }];
-
-  // Приоритет: явный JSON из ICE_SERVERS
-  if (ICE_SERVERS_JSON) {
-    try {
-      const parsed = JSON.parse(ICE_SERVERS_JSON);
-      if (Array.isArray(parsed) && parsed.length) return parsed;
-    } catch (e) {
-      console.warn('ICE_SERVERS env is not valid JSON, falling back.');
-    }
-  }
-
-  // Лёгкая конфигурация через TURN_* переменные
-  if (TURN_URL && TURN_USER && TURN_PASS) {
-    ice = [
-      ...ice,
-      { urls: TURN_URL, username: TURN_USER, credential: TURN_PASS }
-    ];
-  }
-  return ice;
-}
-
-app.get('/api/ice', (_req, res) => {
-  res.json({ iceServers: buildIceServers() });
-});
 
 // Только TURN для фиксированного webrtcuser: берёт пароль из переменных окружения
 app.get('/api/turn', (_req, res) => {
