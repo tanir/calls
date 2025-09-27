@@ -508,12 +508,20 @@
 
     function createPeer(){
       pc=new RTCPeerConnection({iceServers, iceTransportPolicy: relayMode?'relay':'all'});
-      localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
+
+      // Добавляем медиа потоки, если они доступны
+      if (localStream && localStream.getTracks) {
+        localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
+      }
+
       preferH264(pc);
 
       pc.ontrack=(ev)=>{
         const [stream]=ev.streams;
-        if(stream && remoteVideo.srcObject!==stream){ remoteVideo.srcObject=stream; ensurePlayback(); }
+        if(stream && remoteVideo && remoteVideo.srcObject!==stream){
+          remoteVideo.srcObject=stream;
+          ensurePlayback();
+        }
       };
       pc.onicecandidate=(ev)=>{ if(ev.candidate) send('candidate',{candidate:ev.candidate}) };
       pc.oniceconnectionstatechange=async()=>{
@@ -622,7 +630,7 @@
             break;
           case 'peer-joined':
             setStatus('К вам присоединились. Готовим соединение…');
-            if(role==='host' && !offerStarted){
+            if(role==='host' && !offerStarted && localStream){
               try{
                 offerStarted=true;
                 const offer=await pc.createOffer();
@@ -633,15 +641,20 @@
             }
             break;
           case 'ready':
-            if(role==='guest' && !offerStarted){
-              try{
-                offerStarted=true;
-                const offer=await pc.createOffer(); await pc.setLocalDescription(offer); send('offer',offer); setStatus('Отправлен оффер (guest)…');
-              }catch(e){ console.error('guest offer', e); offerStarted=false; }
-            }
+            // Комната готова для соединения
             break;
           case 'offer':
-            if(role==='host'){ await pc.setRemoteDescription(new RTCSessionDescription(msg.data)); const answer=await pc.createAnswer(); await pc.setLocalDescription(answer); send('answer',answer); setStatus('Отправлен ответ…'); }
+            // Принимаем offer и отвечаем answer (независимо от роли)
+            try {
+              await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              send('answer', answer);
+              setStatus('Отправлен ответ на offer…');
+            } catch(e) {
+              console.error('Failed to handle offer:', e);
+              setStatus('Ошибка при обработке offer');
+            }
             break;
           case 'answer': await pc.setRemoteDescription(new RTCSessionDescription(msg.data)); setStatus('Идёт установление соединения…'); break;
           case 'candidate': try{ await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate)) }catch(e){ console.error('addIceCandidate',e) } break;
