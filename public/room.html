@@ -217,7 +217,7 @@
 
     let ws,pc,localStream; let role='guest'; let isCamOn=true,isMicOn=true; let offerStarted=false;
     let relayMode=false; let iceRestartTried=false; let relaySwitchTried=false;
-    let connectionTimer=null; let isRussianUser=false;
+    let connectionTimer=null; let isRussianUser=false; let isSafari=false;
 
     // Множественные STUN/TURN серверы для лучшей совместимости с Россией
     let iceServers = [
@@ -271,12 +271,134 @@
       return lang.startsWith('ru') || timezone.includes('Moscow') || timezone.includes('Europe/Moscow');
     }
 
+    // Определяем Safari
+    function detectSafari(){
+      const ua = navigator.userAgent;
+      return /^((?!chrome|android).)*safari/i.test(ua) || /Safari/i.test(navigator.vendor);
+    }
+
     function setStatus(t){ if(statusEl) statusEl.textContent=t }
     function send(type,data){ws?.send(JSON.stringify({type,data,roomId,token}))}
 
     async function initMedia(){
-      localStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-      localVideo.srcObject=localStream;
+      try {
+        isSafari = detectSafari();
+
+        if (isSafari) {
+          setStatus('Safari обнаружен — получаем доступ к медиа...');
+
+          // Safari требует последовательного доступа к устройствам
+          try {
+            // Сначала пытаемся получить доступ к аудио
+            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            setStatus('Микрофон доступен');
+
+            // Затем пытаемся получить доступ к видео
+            const videoStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+            setStatus('Камера доступна');
+
+            // Объединяем потоки
+            localStream = new MediaStream([
+              ...audioStream.getAudioTracks(),
+              ...videoStream.getVideoTracks()
+            ]);
+
+            // Останавливаем отдельные потоки, так как они больше не нужны
+            audioStream.getTracks().forEach(track => track.stop());
+            videoStream.getTracks().forEach(track => track.stop());
+
+          } catch (sequentialError) {
+            console.warn('Sequential access failed, trying combined:', sequentialError);
+            // Fallback: пытаемся получить оба одновременно
+            localStream = await navigator.mediaDevices.getUserMedia({
+              video: { width: 1280, height: 720 },
+              audio: { echoCancellation: true, noiseSuppression: true }
+            });
+          }
+
+        } else {
+          // Для других браузеров используем обычный подход
+          localStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 1280, height: 720 },
+            audio: { echoCancellation: true, noiseSuppression: true }
+          });
+        }
+
+        // Устанавливаем поток в видеоэлемент (если он существует)
+        if (localVideo && !roomType) { // roomType проверка для видео-комнат
+          localVideo.srcObject = localStream;
+        }
+
+        setStatus('Медиа устройства готовы');
+
+      } catch (error) {
+        console.error('Media access error:', error);
+
+        let errorMessage = 'Не удалось получить доступ к камере/микрофону. ';
+
+        if (error.name === 'NotAllowedError') {
+          errorMessage += 'Разрешите доступ в настройках браузера.';
+        } else if (error.name === 'NotFoundError') {
+          errorMessage += 'Камера или микрофон не найдены.';
+        } else if (error.name === 'NotReadableError') {
+          errorMessage += 'Устройства заняты другим приложением.';
+        } else if (error.name === 'OverconstrainedError') {
+          errorMessage += 'Запрошенные настройки не поддерживаются.';
+        } else {
+          errorMessage += 'Проверьте настройки браузера и разрешения.';
+        }
+
+        alert(errorMessage);
+
+        // Для Safari показываем дополнительные инструкции
+        if (isSafari) {
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+          let safariMessage = 'Для Safari:\n';
+
+          if (isIOS) {
+            safariMessage += '• В iOS Safari коснитесь адресной строки и выберите "Разрешить доступ к камере"\n';
+            safariMessage += '• Или откройте настройки Safari > Конфиденциальность > Камера/Микрофон\n';
+          } else {
+            safariMessage += '• В меню Safari выберите "Настройки для этого сайта"\n';
+            safariMessage += '• Разрешите доступ к камере и микрофону\n';
+          }
+
+          safariMessage += '• Обновите страницу и попробуйте снова';
+
+          alert(safariMessage);
+
+          // Добавляем кнопку для повторной попытки
+          const retryButton = document.createElement('button');
+          retryButton.textContent = 'Повторить доступ к медиа';
+          retryButton.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 12px 20px;
+            background: #007AFF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 10000;
+          `;
+          retryButton.onclick = async () => {
+            retryButton.remove();
+            try {
+              await initMedia();
+              await createPeer();
+              setStatus('Медиа устройства готовы — подключаемся...');
+            } catch (retryError) {
+              alert('Повторная попытка не удалась. Проверьте настройки браузера.');
+            }
+          };
+          document.body.appendChild(retryButton);
+        }
+
+        throw error;
+      }
     }
 
     function preferH264(pc){
@@ -289,9 +411,37 @@
     }
 
     function ensurePlayback(){
-      const tryPlay=()=>{ remoteVideo.play().then(()=>overlay.classList.add('hidden')).catch(()=>overlay.classList.remove('hidden')) };
-      tryPlay(); remoteVideo.addEventListener('loadedmetadata',tryPlay,{once:true});
-      startPlaybackBtn.addEventListener('click',tryPlay);
+      if (!remoteVideo) return; // Если видео удалено, не выполняем
+
+      const tryPlay=()=>{
+        remoteVideo.volume = isSpeakerOn ? 1.0 : 0.0;
+        remoteVideo.play().then(()=>{
+          if (overlay) overlay.classList.add('hidden');
+        }).catch((error)=>{
+          console.log('Playback failed:', error);
+          if (overlay) overlay.classList.remove('hidden');
+
+          // Для Safari добавляем специальную обработку
+          if (isSafari && startPlaybackBtn) {
+            startPlaybackBtn.textContent = 'Нажмите для начала воспроизведения (Safari)';
+            startPlaybackBtn.style.display = 'block';
+          }
+        });
+      };
+
+      // Для Safari делаем дополнительную попытку после user interaction
+      if (isSafari) {
+        const userInteractionHandler = () => {
+          tryPlay();
+        };
+
+        document.addEventListener('touchstart', userInteractionHandler, { once: true });
+        document.addEventListener('click', userInteractionHandler, { once: true });
+      }
+
+      tryPlay();
+      if (remoteVideo) remoteVideo.addEventListener('loadedmetadata',tryPlay,{once:true});
+      if (startPlaybackBtn) startPlaybackBtn.addEventListener('click',tryPlay);
       document.addEventListener('visibilitychange',()=>{ if(!document.hidden) tryPlay() })
     }
 
@@ -339,6 +489,12 @@
     async function start(){
       roomLabel.textContent=roomId||'—';
       if(!roomId||!token){alert('Неверная ссылка: отсутствует room или token.');location.href='/';return}
+
+      // Проверяем HTTPS для Safari
+      if (isSafari && location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        alert('Safari требует HTTPS для доступа к камере и микрофону. Пожалуйста, используйте HTTPS версию сайта.');
+        return;
+      }
 
       // Определяем пользователя и устанавливаем relay режим при необходимости
       isRussianUser = detectRussianUser();
