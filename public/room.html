@@ -198,591 +198,409 @@
   </nav>
 
   <script>
-    /* корректная высота на мобилках */
-    function setVh(){const h=(window.visualViewport?.height||window.innerHeight);document.documentElement.style.setProperty('--vh',h+'px')}
-    setVh();window.addEventListener('resize',setVh);window.addEventListener('orientationchange',setVh);
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room');
+    const token = urlParams.get('token');
+    const roomType = urlParams.get('type') || 'video';
 
-    const qs=new URLSearchParams(location.search);
-    let roomId=qs.get('room'); let token=qs.get('token');
+    // DOM elements
+    const roomLabel = document.getElementById('roomLabel');
+    const statusEl = document.getElementById('status');
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const overlay = document.getElementById('playOverlay');
+    const startPlaybackBtn = document.getElementById('startPlayback');
+    const micHint = document.getElementById('micHint');
 
+    // Control buttons
+    const copyBtns = [document.getElementById('copyLink'), document.getElementById('copyLinkM')];
+    const camBtns = [document.getElementById('toggleCam'), document.getElementById('toggleCamM')];
+    const micBtns = [document.getElementById('toggleMic'), document.getElementById('toggleMicM')];
+    const hangupBtns = [document.getElementById('hangup'), document.getElementById('hangupM')];
 
-    const roomLabel=document.getElementById('roomLabel'); const statusEl=document.getElementById('status');
-    const copyBtn=document.getElementById('copyLink'); const camBtn=document.getElementById('toggleCam'); const micBtn=document.getElementById('toggleMic'); const hangupBtn=document.getElementById('hangup');
-    const copyBtnM=document.getElementById('copyLinkM'); const camBtnM=document.getElementById('toggleCamM'); const micBtnM=document.getElementById('toggleMicM'); const hangupBtnM=document.getElementById('hangupM');
+    // State
+    let ws, pc, localStream;
+    let isCamOn = true, isMicOn = true;
+    let isHost = false;
 
-    const localVideo=document.getElementById('localVideo'); const remoteVideo=document.getElementById('remoteVideo');
-    const overlay=document.getElementById('playOverlay'); const startPlaybackBtn=document.getElementById('startPlayback');
-    const micHint=document.getElementById('micHint');
-
-    // Упрощено: ждём room/token только из query
-
-    let ws,pc,localStream; let role='guest'; let isCamOn=true,isMicOn=true; let offerStarted=false;
-    let relayMode=false; let iceRestartTried=false; let relaySwitchTried=false;
-    let connectionTimer=null; let isRussianUser=false; let isSafari=false; let isIOS=false; let roomType=qs.get('type') || 'video';
-    console.log('🏠 Room type:', roomType);
-
-    // Множественные STUN/TURN серверы для лучшей совместимости с Россией
-    let iceServers = [
-      // Основные STUN серверы Google (могут быть заблокированы в РФ)
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-
-      // Альтернативные STUN серверы
-      { urls: 'stun:stun.stunprotocol.org:3478' },
-      { urls: 'stun:stun.voxgratia.org:3478' },
-      { urls: 'stun:stun.xten.com:3478' },
-      { urls: 'stun:stun.sipnet.net:3478' },
-      { urls: 'stun:stun.ideasip.com:3478' },
-      { urls: 'stun:stun.iptel.org:3478' },
-      { urls: 'stun:stun.softjoys.com:3478' },
-      { urls: 'stun:stunserver.org:3478' },
-
-      // TURN серверы (работают даже через NAT/firewall)
-      { urls: 'turn:turn.bistri.com:80', username: 'homeo', credential: 'homeo' },
-      { urls: 'turn:turn.anyfirewall.com:443?transport=tcp', username: 'webrtc', credential: 'webrtc' },
-      { urls: 'turn:numb.viagenie.ca:3478', username: 'numb', credential: 'numbviagenie' },
-      { urls: 'turn:turn01.hubl.in:3478', username: 'hubl', credential: 'hubl' },
-
-      // Российские TURN серверы (если доступны)
-      { urls: 'turn:turn.russianvoicechat.com:3478', username: 'guest', credential: 'guest' }
-    ];
-
-    async function loadTurn(){
-      try{
-        const r=await fetch('/api/turn');
-        if(r.ok){
-          const d=await r.json();
-          if(Array.isArray(d.iceServers)) {
-            // Добавляем загруженные серверы к существующим
-            iceServers = [...iceServers, ...d.iceServers];
-          }
-        }
-      }catch{}
+    // Utility functions
+    function setStatus(text) {
+      if (statusEl) statusEl.textContent = text;
+      console.log('Status:', text);
     }
 
-    // Определяем, является ли пользователь из России
-    function detectRussianUser(){
-      const lang = navigator.language || navigator.userLanguage;
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      return lang.startsWith('ru') || timezone.includes('Moscow') || timezone.includes('Europe/Moscow');
-    }
-
-    // Определяем Safari
-    function detectSafari(){
-      const ua = navigator.userAgent;
-      return /^((?!chrome|android).)*safari/i.test(ua) || /Safari/i.test(navigator.vendor);
-    }
-
-    // Определяем iOS устройство
-    function detectIOS(){
-      const ua = navigator.userAgent;
-      return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    }
-
-    function setStatus(t){ if(statusEl) statusEl.textContent=t }
-    function send(type,data){
-      console.log(`📤 Sending ${type}:`, data);
+    function send(type, data = {}) {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        console.error(`❌ Cannot send ${type}: WebSocket not ready (state: ${ws?.readyState})`);
+        console.error('WebSocket not ready');
         return;
       }
-      ws.send(JSON.stringify({type,data,roomId,token}));
+      ws.send(JSON.stringify({ type, roomId, token, data }));
     }
 
-    async function initMedia(){
-      console.log('🎥 initMedia called, isSafari:', isSafari);
-
+    async function getIceServers() {
       try {
-        isSafari = detectSafari();
+        const response = await fetch('/api/turn');
+        const data = await response.json();
+        return data.iceServers || [];
+      } catch (e) {
+        console.warn('Failed to load TURN servers:', e);
+        return [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ];
+      }
+    }
 
-        if (isSafari) {
-          console.log('🧭 Safari detected, trying simplified access');
-          setStatus('Safari обнаружен — получаем доступ к медиа...');
+    async function initMedia() {
+      try {
+        setStatus('Получаем доступ к камере и микрофону...');
 
-          // Для Safari используем упрощенный одновременный доступ
-          console.log('🎥 Requesting combined media access for Safari...');
-          try {
-            localStream = await navigator.mediaDevices.getUserMedia({
-              video: {
-                width: { ideal: 640, max: 1280 },
-                height: { ideal: 480, max: 720 },
-                facingMode: 'user'
-              },
-              audio: {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false
-              }
-            });
-            console.log('✅ Safari media access successful, tracks:', localStream.getTracks().length);
-
-            // Проверяем, что у нас есть и аудио и видео
-            const audioTracks = localStream.getAudioTracks();
-            const videoTracks = localStream.getVideoTracks();
-
-            console.log('🎤 Audio tracks:', audioTracks.length, '📹 Video tracks:', videoTracks.length);
-
-            if (audioTracks.length > 0) {
-              setStatus('Микрофон и камера доступны');
-            } else if (videoTracks.length > 0) {
-              setStatus('Камера доступна (микрофон не найден)');
-            } else {
-              throw new Error('Ни аудио, ни видео треки не найдены');
-            }
-
-          } catch (safariError) {
-            console.warn('❌ Safari media access failed:', safariError);
-
-            // Попробуем получить только видео для Safari
-            try {
-              console.log('📹 Trying video-only access...');
-              localStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                  width: { ideal: 640 },
-                  height: { ideal: 480 }
-                },
-                audio: false
-              });
-              console.log('✅ Video-only access successful');
-              setStatus('Камера доступна (микрофон отключен)');
-            } catch (videoOnlyError) {
-              console.error('❌ Video-only access also failed:', videoOnlyError);
-              throw safariError; // Бросаем оригинальную ошибку
-            }
+        const constraints = {
+          video: roomType === 'video' ? { width: 1280, height: 720 } : false,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
           }
+        };
 
-        } else {
-          console.log('🌐 Non-Safari browser, using standard access');
-          // Для других браузеров используем обычный подход
-          localStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 1280, height: 720 },
-            audio: { echoCancellation: true, noiseSuppression: true }
-          });
-          console.log('✅ Standard access successful, tracks:', localStream.getTracks().length);
-        }
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
 
-        // Устанавливаем поток в видеоэлемент (если он существует)
-        if (localVideo && roomType === 'video') { // Показываем превью только для видео-комнат
-          console.log('📺 Setting video element srcObject');
+        if (roomType === 'video' && localVideo) {
           localVideo.srcObject = localStream;
         }
 
-        console.log('🎉 Media initialization completed successfully');
         setStatus('Медиа устройства готовы');
-
+        return true;
       } catch (error) {
-        console.error('❌ Media access error:', error);
-        console.error('Error name:', error.name);
-        console.error('Error message:', error.message);
+        console.error('Media access error:', error);
 
-        // Проверяем, возможно доступ уже есть, но ошибка в другом месте
-        if (localStream && localStream.getTracks().length > 0) {
-          console.log('⚠️  Stream exists but error occurred, tracks:', localStream.getTracks().length);
-          const audioTracks = localStream.getAudioTracks().length;
-          const videoTracks = localStream.getVideoTracks().length;
-          console.log(`🎤 Audio: ${audioTracks}, 📹 Video: ${videoTracks}`);
-
-          if (audioTracks > 0 || videoTracks > 0) {
-            setStatus('Медиа доступен, но произошла ошибка');
-            return; // Не выбрасываем ошибку, продолжаем
-          }
-        }
-
-        // Проверяем разрешения для Safari
-        if (isSafari) {
-          console.log('🔍 Checking Safari permissions...');
-          try {
-            const permissions = await navigator.permissions.query({ name: 'camera' });
-            console.log('📹 Camera permission:', permissions.state);
-            const micPermissions = await navigator.permissions.query({ name: 'microphone' });
-            console.log('🎤 Microphone permission:', micPermissions.state);
-          } catch (permError) {
-            console.log('⚠️  Permissions API not available');
-          }
-        }
-
-        let errorMessage = 'Не удалось получить доступ к камере/микрофону. ';
-
+        let message = 'Не удалось получить доступ к ';
         if (error.name === 'NotAllowedError') {
-          errorMessage += 'Разрешите доступ в настройках браузера.';
+          message += 'камере/микрофону. Разрешите доступ в настройках браузера.';
         } else if (error.name === 'NotFoundError') {
-          errorMessage += 'Камера или микрофон не найдены.';
-        } else if (error.name === 'NotReadableError') {
-          errorMessage += 'Устройства заняты другим приложением.';
-        } else if (error.name === 'OverconstrainedError') {
-          errorMessage += 'Запрошенные настройки не поддерживаются.';
+          message += 'камере/микрофону. Устройства не найдены.';
         } else {
-          errorMessage += 'Проверьте настройки браузера и разрешения.';
+          message += 'медиа устройствам.';
         }
 
-        alert(errorMessage);
-
-        // Для Safari показываем дополнительные инструкции
-        if (isSafari) {
-          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-          let safariMessage = 'Для Safari:\n';
-
-          if (isIOS) {
-            safariMessage += '• В iOS Safari коснитесь адресной строки и выберите "Разрешить доступ к камере"\n';
-            safariMessage += '• Или откройте настройки Safari > Конфиденциальность > Камера/Микрофон\n';
-          } else {
-            safariMessage += '• В меню Safari выберите "Настройки для этого сайта"\n';
-            safariMessage += '• Разрешите доступ к камере и микрофону\n';
-          }
-
-          safariMessage += '• Обновите страницу и попробуйте снова';
-          safariMessage += '\n\nОткройте Консоль разработчика (Cmd+Opt+C) для детальной информации.';
-
-          alert(safariMessage);
-
-          // Добавляем кнопку для повторной попытки
-          const retryButton = document.createElement('button');
-          retryButton.textContent = 'Повторить доступ к медиа';
-          retryButton.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 12px 20px;
-            background: #007AFF;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            cursor: pointer;
-            z-index: 10000;
-          `;
-          retryButton.onclick = async () => {
-            retryButton.remove();
-            try {
-              await initMedia();
-              if (typeof createPeer === 'function') {
-                await createPeer();
-              }
-              setStatus('Медиа устройства готовы — подключаемся...');
-            } catch (retryError) {
-              console.error('Retry failed:', retryError);
-              alert('Повторная попытка не удалась. Проверьте настройки браузера.');
-            }
-          };
-          document.body.appendChild(retryButton);
-        }
-
+        alert(message);
         throw error;
       }
     }
 
-    function preferH264(pc){
-      const caps=RTCRtpSender.getCapabilities&&RTCRtpSender.getCapabilities('video');
-      if(!caps||!caps.codecs) return;
-      const h264=caps.codecs.filter(c=>(c.mimeType||'').toLowerCase()==='video/h264');
-      if(!h264.length) return;
-      const others=caps.codecs.filter(c=>(c.mimeType||'').toLowerCase()!=='video/h264');
-      pc.getTransceivers().forEach(t=>{ if(t?.receiver?.track?.kind==='video'&&t.setCodecPreferences){ try{ t.setCodecPreferences([...h264,...others]) }catch{} }});
-    }
+    function createPeerConnection() {
+      const iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ];
 
-    function ensurePlayback(){
-      if (!remoteVideo) return; // Если видео удалено, не выполняем
+      pc = new RTCPeerConnection({ iceServers });
 
-      const tryPlay=()=>{
-        remoteVideo.volume = isSpeakerOn ? 1.0 : 0.0;
-        remoteVideo.play().then(()=>{
-          if (overlay) overlay.classList.add('hidden');
-        }).catch((error)=>{
-          console.log('Playback failed:', error);
-          if (overlay) overlay.classList.remove('hidden');
-
-          // Для Safari добавляем специальную обработку
-          if (isSafari && startPlaybackBtn) {
-            startPlaybackBtn.textContent = 'Нажмите для начала воспроизведения (Safari)';
-            startPlaybackBtn.style.display = 'block';
-          }
-        });
-      };
-
-      // Для Safari делаем дополнительную попытку после user interaction
-      if (isSafari) {
-        const userInteractionHandler = () => {
-          tryPlay();
-        };
-
-        document.addEventListener('touchstart', userInteractionHandler, { once: true });
-        document.addEventListener('click', userInteractionHandler, { once: true });
+      // Add local tracks
+      if (localStream) {
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
       }
 
-      tryPlay();
-      if (remoteVideo) remoteVideo.addEventListener('loadedmetadata',tryPlay,{once:true});
-      if (startPlaybackBtn) startPlaybackBtn.addEventListener('click',tryPlay);
-      document.addEventListener('visibilitychange',()=>{ if(!document.hidden) tryPlay() })
-    }
-
-    function createPeer(){
-      console.log('🔗 Creating peer connection...');
-      pc=new RTCPeerConnection({iceServers, iceTransportPolicy: relayMode?'relay':'all'});
-      console.log('🔗 Peer connection created with iceServers:', iceServers?.length || 0);
-
-      // Добавляем медиа потоки, если они доступны
-      if (localStream && localStream.getTracks) {
-        const tracks = localStream.getTracks();
-        console.log('🔗 Adding', tracks.length, 'local tracks to peer connection');
-        tracks.forEach(track=>pc.addTrack(track,localStream));
-      } else {
-        console.log('⚠️  No local stream available to add to peer connection');
-      }
-
-      preferH264(pc);
-
-      pc.ontrack=(ev)=>{
-        console.log('🎬 Remote track received:', ev.track.kind, ev.streams.length, 'streams');
-        const [stream]=ev.streams;
-        if(stream && remoteVideo && remoteVideo.srcObject!==stream){
-          console.log('🎬 Setting remote video stream');
-          remoteVideo.srcObject=stream;
-          ensurePlayback();
+      // Handle remote tracks
+      pc.ontrack = (event) => {
+        console.log('Remote track received:', event.track.kind);
+        if (remoteVideo && event.streams[0]) {
+          remoteVideo.srcObject = event.streams[0];
+          playRemoteVideo();
         }
       };
-      pc.onicecandidate=(ev)=>{
-        console.log('🧊 ICE candidate:', ev.candidate);
-        if(ev.candidate) send('candidate',{candidate:ev.candidate});
-      };
-      pc.oniceconnectionstatechange=async()=>{
-        const s=pc.iceConnectionState;
-        console.log('🧊 ICE connection state:', s);
-        if(s==='failed'){
-          setStatus('ICE failed — пытаемся восстановить…');
-          if(!iceRestartTried){
-            try{
-              iceRestartTried=true;
-              const offer=await pc.createOffer({iceRestart:true});
-              await pc.setLocalDescription(offer); send('offer',offer);
-            }catch(e){ console.error('iceRestart',e); }
-          } else if(!relaySwitchTried){
-            relaySwitchTried=true;
-            send('force-relay',{});
-            switchToRelay();
-          }
+
+      // Handle ICE candidates
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          send('candidate', { candidate: event.candidate });
         }
       };
-      pc.onconnectionstatechange=()=>{
-        const s=pc.connectionState;
-        console.log('🔗 Peer connection state:', s);
-        if(s==='connected') {
+
+      // Handle connection state changes
+      pc.oniceconnectionstatechange = () => {
+        console.log('ICE connection state:', pc.iceConnectionState);
+        if (pc.iceConnectionState === 'connected') {
           setStatus('Соединение установлено');
-          // Очищаем таймер при успешном подключении
-          if(connectionTimer) {
-            clearTimeout(connectionTimer);
-            connectionTimer = null;
-          }
+        } else if (pc.iceConnectionState === 'failed') {
+          setStatus('Ошибка соединения');
         }
-        if(s==='disconnected'||s==='failed') setStatus('Связь потеряна. Обновите страницу.')
       };
+
+      pc.onconnectionstatechange = () => {
+        console.log('Connection state:', pc.connectionState);
+        if (pc.connectionState === 'connected') {
+          setStatus('Связь установлена');
+        } else if (pc.connectionState === 'disconnected') {
+          setStatus('Связь потеряна');
+        } else if (pc.connectionState === 'failed') {
+          setStatus('Соединение не удалось');
+        }
+      };
+
+      return pc;
     }
 
-    async function start(){
-      console.log('🚀 Starting application...');
-      roomLabel.textContent=roomId||'—';
-      if(!roomId||!token){
-        console.log('❌ Missing roomId or token');
-        alert('Неверная ссылка: отсутствует room или token.');
-        location.href='/';
-        return;
-      }
-
-      // Проверяем HTTPS для Safari
-      if (isSafari && location.protocol !== 'https:' && location.hostname !== 'localhost') {
-        console.log('❌ Safari requires HTTPS');
-        alert('Safari требует HTTPS для доступа к камере и микрофону. Пожалуйста, используйте HTTPS версию сайта.');
-        return;
-      }
-
-      console.log('🔍 Detecting user location and device...');
-      // Определяем пользователя и устанавливаем relay режим при необходимости
-      isRussianUser = detectRussianUser();
-      isIOS = detectIOS();
-      isSafari = detectSafari();
-
-      console.log('📱 Device info:', { isIOS, isSafari, isRussianUser });
-
-      if(isRussianUser){
-        console.log('🇷🇺 Russian user detected, enabling TURN mode');
-        setStatus('Обнаружен пользователь из РФ — используем TURN серверы…');
-        relayMode = true;
-      }
-
-      // iOS устройства часто требуют TURN для стабильного соединения
-      if(isIOS){
-        console.log('🍎 iOS device detected, enabling TURN mode for better compatibility');
-        setStatus('iOS устройство — используем TURN серверы для стабильности…');
-        relayMode = true;
-
-        // Для iOS добавляем дополнительные TURN серверы
-        iceServers.push(
-          { urls: 'turn:turn.anyfirewall.com:443?transport=tcp', username: 'webrtc', credential: 'webrtc' },
-          { urls: 'turn:turn.numb.viagenie.ca:3478', username: 'numb', credential: 'numbviagenie' }
-        );
-      }
+    async function playRemoteVideo() {
+      if (!remoteVideo) return;
 
       try {
-        console.log('📡 Loading TURN servers...');
-        await loadTurn();
+        await remoteVideo.play();
+        if (overlay) overlay.classList.add('hidden');
+      } catch (error) {
+        console.log('Playback failed:', error);
+        if (overlay) overlay.classList.remove('hidden');
+      }
+    }
 
-        console.log('🎥 Initializing media...');
+    async function createOffer() {
+      try {
+        setStatus('Создаём предложение подключения...');
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        send('offer', offer);
+        setStatus('Предложение отправлено');
+      } catch (error) {
+        console.error('Error creating offer:', error);
+        setStatus('Ошибка при создании предложения');
+      }
+    }
+
+    async function handleOffer(offer) {
+      try {
+        setStatus('Принимаем предложение...');
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        send('answer', answer);
+        setStatus('Ответ отправлен');
+      } catch (error) {
+        console.error('Error handling offer:', error);
+        setStatus('Ошибка при обработке предложения');
+      }
+    }
+
+    async function handleAnswer(answer) {
+      try {
+        setStatus('Принимаем ответ...');
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      } catch (error) {
+        console.error('Error handling answer:', error);
+        setStatus('Ошибка при обработке ответа');
+      }
+    }
+
+    async function handleCandidate(candidate) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (error) {
+        console.error('Error adding ICE candidate:', error);
+      }
+    }
+
+    function updateCamUI() {
+      camBtns.forEach(btn => {
+        if (!btn) return;
+        btn.classList.toggle('off', !isCamOn);
+        btn.setAttribute('aria-pressed', String(isCamOn));
+        btn.setAttribute('aria-label', isCamOn ? 'Выключить камеру' : 'Включить камеру');
+      });
+    }
+
+    function updateMicUI() {
+      micBtns.forEach(btn => {
+        if (!btn) return;
+        btn.classList.toggle('off', !isMicOn);
+        btn.setAttribute('aria-pressed', String(isMicOn));
+        btn.setAttribute('aria-label', isMicOn ? 'Выключить микрофон' : 'Включить микрофон');
+      });
+      if (micHint) micHint.classList.toggle('hidden', isMicOn);
+    }
+
+    // Event handlers
+    async function copyLink() {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        showToast('Ссылка скопирована');
+      } catch (error) {
+        console.error('Failed to copy link:', error);
+      }
+    }
+
+    function toggleCam() {
+      isCamOn = !isCamOn;
+      if (localStream) {
+        localStream.getVideoTracks().forEach(track => {
+          track.enabled = isCamOn;
+        });
+      }
+      updateCamUI();
+    }
+
+    function toggleMic() {
+      isMicOn = !isMicOn;
+      if (localStream) {
+        localStream.getAudioTracks().forEach(track => {
+          track.enabled = isMicOn;
+        });
+      }
+      updateMicUI();
+    }
+
+    function hangup() {
+      send('leave');
+      cleanup();
+      window.location.href = '/';
+    }
+
+    function cleanup() {
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+      if (remoteVideo && remoteVideo.srcObject) {
+        remoteVideo.srcObject.getTracks().forEach(track => track.stop());
+        remoteVideo.srcObject = null;
+      }
+      if (pc) pc.close();
+      if (ws) ws.close();
+    }
+
+    function showToast(text) {
+      const toast = document.createElement('div');
+      toast.textContent = text;
+      Object.assign(toast.style, {
+        position: 'fixed',
+        left: '50%',
+        bottom: 'calc(72px + 16px)',
+        transform: 'translateX(-50%)',
+        background: '#1f232a',
+        color: '#fff',
+        border: '1px solid #ffffff33',
+        borderRadius: '12px',
+        padding: '10px 14px',
+        zIndex: 9,
+        boxShadow: '0 10px 30px #0008'
+      });
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 1200);
+    }
+
+    // Initialize the application
+    async function init() {
+      // Set viewport height for mobile
+      function setVh() {
+        const vh = window.visualViewport?.height || window.innerHeight;
+        document.documentElement.style.setProperty('--vh', vh + 'px');
+      }
+      setVh();
+      window.addEventListener('resize', setVh);
+      window.addEventListener('orientationchange', setVh);
+
+      // Validate parameters
+      if (!roomId || !token) {
+        alert('Неверная ссылка: отсутствует room или token.');
+        window.location.href = '/';
+        return;
+      }
+
+      roomLabel.textContent = roomId;
+
+      try {
+        // Initialize media
         await initMedia();
 
-        console.log('🔗 Creating peer connection...');
-        createPeer();
+        // Create peer connection
+        createPeerConnection();
 
-        console.log('🌐 Connecting to signaling server...');
-        ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);
-        ws.onopen=()=>{
-          console.log('✅ WebSocket connected, joining room...');
-          send('join',{roomId,token, deviceInfo: { isIOS, isSafari, userAgent: navigator.userAgent.substring(0,50) }});
-          setStatus('Подключаемся к комнате…');
+        // Connect to signaling server
+        setStatus('Подключаемся к серверу...');
+        ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
+
+        ws.onopen = () => {
+          console.log('WebSocket connected');
+          send('join');
+          setStatus('Входим в комнату...');
         };
 
+        ws.onmessage = async (event) => {
+          const msg = JSON.parse(event.data);
+          console.log('Received:', msg.type, msg);
+
+          switch (msg.type) {
+            case 'joined':
+              isHost = msg.role === 'host';
+              setStatus(isHost ? 'Вы первый в комнате. Ждём второго участника...' : 'Второй участник. Готовим соединение...');
+              break;
+
+            case 'peer-joined':
+              setStatus('К вам присоединились. Начинаем соединение...');
+              if (isHost) {
+                await createOffer();
+              }
+              break;
+
+            case 'offer':
+              await handleOffer(msg.data);
+              break;
+
+            case 'answer':
+              await handleAnswer(msg.data);
+              break;
+
+            case 'candidate':
+              await handleCandidate(msg.data.candidate);
+              break;
+
+            case 'leave':
+              setStatus('Собеседник вышел из комнаты');
+              cleanup();
+              break;
+
+            case 'full':
+              alert('Комната уже занята двумя участниками.');
+              window.location.href = '/';
+              break;
+
+            case 'error':
+              alert('Ошибка: ' + (msg.message || 'неизвестно'));
+              break;
+          }
+        };
+
+        ws.onclose = () => {
+          setStatus('Соединение с сервером потеряно');
+        };
+
+        // Bind event handlers
+        copyBtns.forEach(btn => btn?.addEventListener('click', copyLink));
+        camBtns.forEach(btn => btn?.addEventListener('click', toggleCam));
+        micBtns.forEach(btn => btn?.addEventListener('click', toggleMic));
+        hangupBtns.forEach(btn => btn?.addEventListener('click', hangup));
+
+        if (startPlaybackBtn) {
+          startPlaybackBtn.addEventListener('click', playRemoteVideo);
+        }
+
+        // Update UI
+        updateCamUI();
+        updateMicUI();
+
       } catch (error) {
-        console.error('❌ Start failed:', error);
-        // Если initMedia прошла успешно, но createPeer/WS failed, продолжаем
-        if (localStream && localStream.getTracks().length > 0) {
-          console.log('⚠️  Media available but connection failed, continuing...');
-          setStatus('Медиа готовы, но подключение не удалось');
-        } else {
-          throw error;
-        }
+        console.error('Initialization failed:', error);
+        alert('Не удалось инициализировать приложение. Проверьте разрешения на доступ к камере и микрофону.');
       }
-      ws.onmessage=async(ev)=>{
-        const msg=JSON.parse(ev.data);
-        console.log(`📥 Received ${msg.type}:`, msg);
-        switch(msg.type){
-          case 'joined':
-            role=msg.role;
-            setStatus(role==='host'?'Вы первый в комнате. Ждём второго участника…':'Второй участник. Готовим соединение…');
-
-            // Для российских пользователей или при проблемах с подключением
-            // устанавливаем таймер на переключение в relay режим через 10 секунд
-            if(isRussianUser || relayMode){
-              connectionTimer = setTimeout(() => {
-                if(pc && pc.connectionState !== 'connected' && !relaySwitchTried){
-                  setStatus('Проблемы с подключением — переключаемся на TURN…');
-                  send('force-relay',{});
-                  switchToRelay();
-                }
-              }, 10000);
-            }
-            break;
-          case 'peer-joined':
-            setStatus('К вам присоединились. Готовим соединение…');
-            if(role==='host' && !offerStarted && localStream){
-              try{
-                console.log('🎯 Host creating offer...');
-                offerStarted=true;
-                const offer=await pc.createOffer();
-                console.log('🎯 Offer created:', offer);
-                await pc.setLocalDescription(offer);
-                console.log('🎯 Local description set');
-                send('offer',offer);
-                setStatus('Отправлен оффер (host)…');
-              }catch(e){ console.error('host offer', e); offerStarted=false; }
-            }
-            break;
-          case 'ready':
-            // Комната готова для соединения
-            break;
-          case 'offer':
-            // Принимаем offer и отвечаем answer (независимо от роли)
-            try {
-              console.log('🎯 Received offer, setting remote description...');
-              await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
-              console.log('🎯 Remote description set, creating answer...');
-              const answer = await pc.createAnswer();
-              console.log('🎯 Answer created:', answer);
-              await pc.setLocalDescription(answer);
-              console.log('🎯 Local description set, sending answer...');
-              send('answer', answer);
-              setStatus('Отправлен ответ на offer…');
-            } catch(e) {
-              console.error('Failed to handle offer:', e);
-              setStatus('Ошибка при обработке offer');
-            }
-            break;
-          case 'answer':
-            console.log('🎯 Received answer, setting remote description...');
-            await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
-            console.log('🎯 Answer processed, connection should establish...');
-            setStatus('Идёт установление соединения…');
-            break;
-          case 'candidate':
-            console.log('🧊 Received ICE candidate:', msg.data.candidate);
-            try{ await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate)) }catch(e){ console.error('addIceCandidate',e) }
-            break;
-          case 'force-relay':
-            if(!relayMode){ switchToRelay(); }
-            break;
-          case 'force-relay-ios':
-            console.log('🍎 Force relay mode for iOS-iOS connection:', msg.data);
-            if(!relayMode){
-              setStatus('iOS-iOS соединение — переключаемся на TURN…');
-              switchToRelay();
-            }
-            break;
-          case 'leave':
-            setStatus('Собеседник положил трубку.');
-            cleanup(true);
-            break;
-          case 'full': alert('Комната уже занята двумя участниками.'); location.href='/'; break;
-          case 'error': alert('Ошибка: '+(msg.message||'неизвестно')); break;
-        }
-      };
-      ws.onclose=()=>setStatus('Сигналинг отключён. Перезагрузите страницу.');
     }
 
-    function switchToRelay(){
-      try{ pc?.close(); }catch{}
-      offerStarted=false; // позволим инициировать заново
-      relayMode=true; // только TURN
-      createPeer();
-      (async()=>{ try{ const offer=await pc.createOffer(); await pc.setLocalDescription(offer); send('offer',offer); setStatus('Оффер через TURN…'); }catch(e){ console.error('relay offer',e) } })();
-    }
+    // Handle page unload
+    window.addEventListener('beforeunload', () => {
+      send('leave');
+      cleanup();
+    });
 
-    /* UI-состояния */
-    function updateCamUi(){
-      [camBtn,camBtnM].forEach(b=>{ if(!b)return; b.classList.toggle('off',!isCamOn); b.setAttribute('aria-pressed',String(isCamOn)); b.setAttribute('aria-label',isCamOn?'Выключить камеру':'Включить камеру'); });
-    }
-    function updateMicUi(){
-      [micBtn,micBtnM].forEach(b=>{ if(!b)return; b.classList.toggle('off',!isMicOn); b.setAttribute('aria-pressed',String(isMicOn)); b.setAttribute('aria-label',isMicOn?'Выключить микрофон':'Включить микрофон'); });
-      micHint.classList.toggle('hidden', isMicOn);
-    }
-
-      async function copyLink(){ try{ await navigator.clipboard.writeText(location.href); showToast('Ссылка скопирована') }catch{} }
-      function toggleCam(){ isCamOn=!isCamOn; localStream.getVideoTracks().forEach(t=>t.enabled=isCamOn); updateCamUi(); }
-      function toggleMic(){ isMicOn=!isMicOn; localStream.getAudioTracks().forEach(t=>t.enabled=isMicOn); updateMicUi(); }
-      function safeClose(){ window.close(); setTimeout(()=>{ location.href='/' },100); }
-      function cleanup(remote=false){
-        if(remoteVideo.srcObject){ remoteVideo.srcObject.getTracks().forEach(t=>t.stop()); remoteVideo.srcObject=null; }
-        pc?.getSenders()?.forEach(s=>s.track&&s.track.stop());
-        pc?.close();
-        ws?.close();
-        if(remote) safeClose();
-      }
-      function hangup(){ send('leave',{}); cleanup(false); safeClose(); }
-
-    function bind(el,fn){ el&&el.addEventListener('click',fn) }
-    bind(copyBtn,copyLink); bind(copyBtnM,copyLink);
-    bind(camBtn,toggleCam); bind(camBtnM,toggleCam);
-    bind(micBtn,toggleMic); bind(micBtnM,toggleMic);
-    bind(hangupBtn,hangup); bind(hangupBtnM,hangup);
-
-    function showToast(text){
-      const t=document.createElement('div'); t.textContent=text;
-      Object.assign(t.style,{position:'fixed',left:'50%',bottom:`calc(var(--controls-h,72px) + 16px + env(safe-area-inset-bottom))`,transform:'translateX(-50%)',background:'#1f232a',color:'#fff',border:'1px solid #ffffff33',borderRadius:'12px',padding:'10px 14px',zIndex:9,boxShadow:'0 10px 30px #0008'});
-      document.body.appendChild(t); setTimeout(()=>t.remove(),1200);
-    }
-
-    updateCamUi(); updateMicUi();
-    start().catch(err=>{ console.error(err); alert('Не удалось получить доступ к камере/микрофону. Проверьте разрешения.') });
+    // Start the application
+    init();
   </script>
 </body>
 </html>
