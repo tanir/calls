@@ -217,13 +217,58 @@
 
     let ws,pc,localStream; let role='guest'; let isCamOn=true,isMicOn=true; let offerStarted=false;
     let relayMode=false; let iceRestartTried=false; let relaySwitchTried=false;
+    let connectionTimer=null; let isRussianUser=false;
 
-    let iceServers=[{ urls: ['turn:64.226.121.112:3478'], username: 'webrtcuser', credential: '' }];
+    // Множественные STUN/TURN серверы для лучшей совместимости с Россией
+    let iceServers = [
+      // Основные STUN серверы Google (могут быть заблокированы в РФ)
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+
+      // Альтернативные STUN серверы
+      { urls: 'stun:stun.stunprotocol.org:3478' },
+      { urls: 'stun:stun.voxgratia.org:3478' },
+      { urls: 'stun:stun.xten.com:3478' },
+      { urls: 'stun:stun.sipnet.net:3478' },
+      { urls: 'stun:stun.ideasip.com:3478' },
+      { urls: 'stun:stun.iptel.org:3478' },
+      { urls: 'stun:stun.softjoys.com:3478' },
+      { urls: 'stun:stunserver.org:3478' },
+
+      // TURN серверы (работают даже через NAT/firewall)
+      { urls: 'turn:turn.bistri.com:80', username: 'homeo', credential: 'homeo' },
+      { urls: 'turn:turn.anyfirewall.com:443?transport=tcp', username: 'webrtc', credential: 'webrtc' },
+      { urls: 'turn:numb.viagenie.ca:3478', username: 'numb', credential: 'numbviagenie' },
+      { urls: 'turn:turn01.hubl.in:3478', username: 'hubl', credential: 'hubl' },
+
+      // Российские TURN серверы (если доступны)
+      { urls: 'turn:turn.russianvoicechat.com:3478', username: 'guest', credential: 'guest' },
+
+      // Основной TURN сервер проекта
+      { urls: ['turn:64.226.121.112:3478'], username: 'webrtcuser', credential: '' }
+    ];
+
     async function loadTurn(){
       try{
         const r=await fetch('/api/turn');
-        if(r.ok){ const d=await r.json(); if(Array.isArray(d.iceServers)) iceServers=d.iceServers; }
+        if(r.ok){
+          const d=await r.json();
+          if(Array.isArray(d.iceServers)) {
+            // Добавляем загруженные серверы к существующим
+            iceServers = [...iceServers, ...d.iceServers];
+          }
+        }
       }catch{}
+    }
+
+    // Определяем, является ли пользователь из России
+    function detectRussianUser(){
+      const lang = navigator.language || navigator.userLanguage;
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return lang.startsWith('ru') || timezone.includes('Moscow') || timezone.includes('Europe/Moscow');
     }
 
     function setStatus(t){ if(statusEl) statusEl.textContent=t }
@@ -279,7 +324,14 @@
       };
       pc.onconnectionstatechange=()=>{
         const s=pc.connectionState;
-        if(s==='connected') setStatus('Соединение установлено');
+        if(s==='connected') {
+          setStatus('Соединение установлено');
+          // Очищаем таймер при успешном подключении
+          if(connectionTimer) {
+            clearTimeout(connectionTimer);
+            connectionTimer = null;
+          }
+        }
         if(s==='disconnected'||s==='failed') setStatus('Связь потеряна. Обновите страницу.')
       };
     }
@@ -287,6 +339,14 @@
     async function start(){
       roomLabel.textContent=roomId||'—';
       if(!roomId||!token){alert('Неверная ссылка: отсутствует room или token.');location.href='/';return}
+
+      // Определяем пользователя и устанавливаем relay режим при необходимости
+      isRussianUser = detectRussianUser();
+      if(isRussianUser){
+        setStatus('Обнаружен пользователь из РФ — используем TURN серверы…');
+        relayMode = true;
+      }
+
       await loadTurn();
       await initMedia(); createPeer();
       ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);
@@ -294,7 +354,22 @@
       ws.onmessage=async(ev)=>{
         const msg=JSON.parse(ev.data);
         switch(msg.type){
-          case 'joined': role=msg.role; setStatus(role==='host'?'Вы первый в комнате. Ждём второго участника…':'Второй участник. Готовим соединение…'); break;
+          case 'joined':
+            role=msg.role;
+            setStatus(role==='host'?'Вы первый в комнате. Ждём второго участника…':'Второй участник. Готовим соединение…');
+
+            // Для российских пользователей или при проблемах с подключением
+            // устанавливаем таймер на переключение в relay режим через 10 секунд
+            if(isRussianUser || relayMode){
+              connectionTimer = setTimeout(() => {
+                if(pc && pc.connectionState !== 'connected' && !relaySwitchTried){
+                  setStatus('Проблемы с подключением — переключаемся на TURN…');
+                  send('force-relay',{});
+                  switchToRelay();
+                }
+              }, 10000);
+            }
+            break;
           case 'peer-joined':
             setStatus('К вам присоединились. Готовим соединение…');
             if(role==='host' && !offerStarted){
