@@ -277,7 +277,14 @@
     }
 
     function setStatus(t){ if(statusEl) statusEl.textContent=t }
-    function send(type,data){ws?.send(JSON.stringify({type,data,roomId,token}))}
+    function send(type,data){
+      console.log(`📤 Sending ${type}:`, data);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.error(`❌ Cannot send ${type}: WebSocket not ready (state: ${ws?.readyState})`);
+        return;
+      }
+      ws.send(JSON.stringify({type,data,roomId,token}));
+    }
 
     async function initMedia(){
       console.log('🎥 initMedia called, isSafari:', isSafari);
@@ -507,25 +514,37 @@
     }
 
     function createPeer(){
+      console.log('🔗 Creating peer connection...');
       pc=new RTCPeerConnection({iceServers, iceTransportPolicy: relayMode?'relay':'all'});
+      console.log('🔗 Peer connection created with iceServers:', iceServers?.length || 0);
 
       // Добавляем медиа потоки, если они доступны
       if (localStream && localStream.getTracks) {
-        localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
+        const tracks = localStream.getTracks();
+        console.log('🔗 Adding', tracks.length, 'local tracks to peer connection');
+        tracks.forEach(track=>pc.addTrack(track,localStream));
+      } else {
+        console.log('⚠️  No local stream available to add to peer connection');
       }
 
       preferH264(pc);
 
       pc.ontrack=(ev)=>{
+        console.log('🎬 Remote track received:', ev.track.kind, ev.streams.length, 'streams');
         const [stream]=ev.streams;
         if(stream && remoteVideo && remoteVideo.srcObject!==stream){
+          console.log('🎬 Setting remote video stream');
           remoteVideo.srcObject=stream;
           ensurePlayback();
         }
       };
-      pc.onicecandidate=(ev)=>{ if(ev.candidate) send('candidate',{candidate:ev.candidate}) };
+      pc.onicecandidate=(ev)=>{
+        console.log('🧊 ICE candidate:', ev.candidate);
+        if(ev.candidate) send('candidate',{candidate:ev.candidate});
+      };
       pc.oniceconnectionstatechange=async()=>{
         const s=pc.iceConnectionState;
+        console.log('🧊 ICE connection state:', s);
         if(s==='failed'){
           setStatus('ICE failed — пытаемся восстановить…');
           if(!iceRestartTried){
@@ -543,6 +562,7 @@
       };
       pc.onconnectionstatechange=()=>{
         const s=pc.connectionState;
+        console.log('🔗 Peer connection state:', s);
         if(s==='connected') {
           setStatus('Соединение установлено');
           // Очищаем таймер при успешном подключении
@@ -611,6 +631,7 @@
       }
       ws.onmessage=async(ev)=>{
         const msg=JSON.parse(ev.data);
+        console.log(`📥 Received ${msg.type}:`, msg);
         switch(msg.type){
           case 'joined':
             role=msg.role;
@@ -632,9 +653,12 @@
             setStatus('К вам присоединились. Готовим соединение…');
             if(role==='host' && !offerStarted && localStream){
               try{
+                console.log('🎯 Host creating offer...');
                 offerStarted=true;
                 const offer=await pc.createOffer();
+                console.log('🎯 Offer created:', offer);
                 await pc.setLocalDescription(offer);
+                console.log('🎯 Local description set');
                 send('offer',offer);
                 setStatus('Отправлен оффер (host)…');
               }catch(e){ console.error('host offer', e); offerStarted=false; }
@@ -646,9 +670,13 @@
           case 'offer':
             // Принимаем offer и отвечаем answer (независимо от роли)
             try {
+              console.log('🎯 Received offer, setting remote description...');
               await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+              console.log('🎯 Remote description set, creating answer...');
               const answer = await pc.createAnswer();
+              console.log('🎯 Answer created:', answer);
               await pc.setLocalDescription(answer);
+              console.log('🎯 Local description set, sending answer...');
               send('answer', answer);
               setStatus('Отправлен ответ на offer…');
             } catch(e) {
@@ -656,8 +684,16 @@
               setStatus('Ошибка при обработке offer');
             }
             break;
-          case 'answer': await pc.setRemoteDescription(new RTCSessionDescription(msg.data)); setStatus('Идёт установление соединения…'); break;
-          case 'candidate': try{ await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate)) }catch(e){ console.error('addIceCandidate',e) } break;
+          case 'answer':
+            console.log('🎯 Received answer, setting remote description...');
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.data));
+            console.log('🎯 Answer processed, connection should establish...');
+            setStatus('Идёт установление соединения…');
+            break;
+          case 'candidate':
+            console.log('🧊 Received ICE candidate:', msg.data.candidate);
+            try{ await pc.addIceCandidate(new RTCIceCandidate(msg.data.candidate)) }catch(e){ console.error('addIceCandidate',e) }
+            break;
           case 'force-relay':
             if(!relayMode){ switchToRelay(); }
             break;
