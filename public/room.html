@@ -205,9 +205,6 @@
     const qs=new URLSearchParams(location.search);
     let roomId=qs.get('room'); let token=qs.get('token');
 
-    // Определяем тип комнаты из URL или по умолчанию 'video'
-    roomType = qs.get('type') || 'video';
-    console.log('🏠 Room type:', roomType);
 
     const roomLabel=document.getElementById('roomLabel'); const statusEl=document.getElementById('status');
     const copyBtn=document.getElementById('copyLink'); const camBtn=document.getElementById('toggleCam'); const micBtn=document.getElementById('toggleMic'); const hangupBtn=document.getElementById('hangup');
@@ -221,7 +218,8 @@
 
     let ws,pc,localStream; let role='guest'; let isCamOn=true,isMicOn=true; let offerStarted=false;
     let relayMode=false; let iceRestartTried=false; let relaySwitchTried=false;
-    let connectionTimer=null; let isRussianUser=false; let isSafari=false; let roomType='video';
+    let connectionTimer=null; let isRussianUser=false; let isSafari=false; let roomType=qs.get('type') || 'video';
+    console.log('🏠 Room type:', roomType);
 
     // Множественные STUN/TURN серверы для лучшей совместимости с Россией
     let iceServers = [
