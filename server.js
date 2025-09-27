@@ -118,6 +118,7 @@ wss.on('connection', (ws) => {
       // Поддерживаем оба формата: msg.roomId и msg.data.roomId
       const roomId = String((msg.roomId || (msg.data && msg.data.roomId) || '')).trim();
       const token  = (msg.token || (msg.data && msg.data.token) || '').toString();
+      const deviceInfo = msg.deviceInfo || (msg.data && msg.data.deviceInfo) || {};
 
       if (!roomId || !token) return send(ws, 'error', { message: 'roomId and token required' });
 
@@ -136,6 +137,7 @@ wss.on('connection', (ws) => {
       }
 
       ws.roomId = roomId;
+      ws.deviceInfo = deviceInfo; // Сохраняем информацию об устройстве
       peers.add(ws);
       rooms.set(roomId, peers);
 
@@ -146,6 +148,17 @@ wss.on('connection', (ws) => {
         if (peer !== ws) send(peer, 'peer-joined', { roomId });
       }
       if (peers.size === 2) {
+        // Проверяем, если оба участника на iOS - принудительно включаем TURN
+        const iosDevices = Array.from(peers).filter(peer => peer.deviceInfo && peer.deviceInfo.isIOS);
+        const bothIOS = iosDevices.length === 2;
+
+        if (bothIOS) {
+          console.log(`🍎 Both participants in room ${roomId} are on iOS - forcing TURN relay`);
+          for (const peer of peers) {
+            send(peer, 'force-relay-ios', { reason: 'both-ios-devices' });
+          }
+        }
+
         for (const peer of peers) send(peer, 'ready', { roomId });
       }
       return;
