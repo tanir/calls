@@ -352,7 +352,7 @@
         }
 
         // Устанавливаем поток в видеоэлемент (если он существует)
-        if (localVideo && !roomType) { // roomType проверка для видео-комнат
+        if (localVideo && roomType === 'video') { // Показываем превью только для видео-комнат
           console.log('📺 Setting video element srcObject');
           localVideo.srcObject = localStream;
         }
