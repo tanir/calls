@@ -83,7 +83,7 @@ app.post('/api/create-audio-room', (req, res) => {
   const roomId = randomId(8);
   const token = jwt.sign({ roomId }, JWT_SECRET, { expiresIn: TOKEN_TTL });
 
-  const link = `${req.protocol}://${req.get('host')}/audio.html?room=${roomId}&token=${encodeURIComponent(token)}`;
+  const link = `${req.protocol}://${req.get('host')}/room.html?room=${roomId}&token=${encodeURIComponent(token)}&type=audio`;
   res.json({ roomId, token, link, expiresIn: TOKEN_TTL });
 });
 
@@ -101,7 +101,7 @@ app.get('/go/create-audio', (req, res) => {
   if (!req.session?.auth) return res.redirect('/login.html?next=/go/create-audio');
   const roomId = randomId(8);
   const token = jwt.sign({ roomId }, JWT_SECRET, { expiresIn: TOKEN_TTL });
-  return res.redirect(`/audio.html?room=${roomId}&token=${encodeURIComponent(token)}`);
+  return res.redirect(`/room.html?room=${roomId}&token=${encodeURIComponent(token)}&type=audio`);
 });
 
 // === WebSocket сигналинг с проверкой токена ===
